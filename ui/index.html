@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Antigravity L1/L2 Hybrid DEX Dashboard</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <!-- Header -->
+    <header class="app-header">
+        <div class="logo-area">
+            <span class="logo-icon">▲</span>
+            <div class="logo-text">
+                <h1>ANTIGRAVITY</h1>
+                <span>L1/L2 HYBRID DEX SIMULATOR</span>
+            </div>
+        </div>
+        <div class="system-status">
+            <div class="status-item">
+                <span class="status-dot green animate-pulse"></span>
+                <span class="status-label">L1 Ledger:</span>
+                <span class="status-value" id="l1-block-height">Height 1</span>
+            </div>
+            <div class="status-item">
+                <span class="status-dot green animate-pulse"></span>
+                <span class="status-label">L2 Sequencer:</span>
+                <span class="status-value text-blue" id="l2-status">Active</span>
+            </div>
+            <div class="status-item">
+                <span class="status-dot green animate-pulse"></span>
+                <span class="status-label">SMR Consensus:</span>
+                <span class="status-value text-purple" id="smr-status">3/3 Nodes</span>
+            </div>
+            <div class="status-item">
+                <span class="status-label">Router Latency:</span>
+                <span class="status-value text-cyan" id="router-latency">2.33 µs</span>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Workspace -->
+    <main class="app-workspace">
+        <!-- LEFT PANEL: Trader Terminal -->
+        <section class="panel trader-terminal">
+            <div class="panel-header">
+                <h2>Торговый Терминал</h2>
+                <div class="market-select">BTC-USD (Perpetual)</div>
+            </div>
+
+            <!-- Balances Area -->
+            <div class="card balance-card">
+                <div class="card-row">
+                    <div class="balance-item">
+                        <span class="balance-title">Баланс L1 (Сейф)</span>
+                        <span class="balance-value text-amber" id="l1-vault-balance">$20,000.00</span>
+                    </div>
+                    <div class="balance-item">
+                        <span class="balance-title">Свободный L2 баланс</span>
+                        <span class="balance-value text-green" id="l2-free-balance">$10,000.00</span>
+                    </div>
+                    <div class="balance-item">
+                        <span class="balance-title">Заблокированная маржа</span>
+                        <span class="balance-value" id="l2-locked-margin">$0.00</span>
+                    </div>
+                </div>
+                <div class="bridge-actions">
+                    <button class="btn btn-secondary btn-sm" onclick="showBridgeModal('deposit')">↑ Внести депозит с L1</button>
+                    <button class="btn btn-secondary btn-sm" onclick="showBridgeModal('withdraw')">↓ Вывести на L1</button>
+                </div>
+            </div>
+
+            <!-- Position Information -->
+            <div class="card position-card">
+                <div class="card-header-sm">Открытая позиция L2</div>
+                <div class="card-row mt-1">
+                    <div class="pos-item">
+                        <span class="pos-label">Размер</span>
+                        <span class="pos-val" id="pos-size">0.00 BTC</span>
+                    </div>
+                    <div class="pos-item">
+                        <span class="pos-label">Направление</span>
+                        <span class="pos-val" id="pos-side">—</span>
+                    </div>
+                    <div class="pos-item">
+                        <span class="pos-label">Цена входа</span>
+                        <span class="pos-val" id="pos-entry">$0.00</span>
+                    </div>
+                    <div class="pos-item">
+                        <span class="pos-label">Ликвидация</span>
+                        <span class="pos-val text-red" id="pos-liq">$0.00</span>
+                    </div>
+                    <div class="pos-item">
+                        <span class="pos-label">Неореализ. PnL</span>
+                        <span class="pos-val" id="pos-pnl">$0.00</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Trading Form -->
+            <div class="trading-grid mt-1">
+                <!-- Order Entry -->
+                <div class="card order-form">
+                    <div class="order-side-select">
+                        <button class="side-btn buy active" id="order-side-buy" onclick="setOrderSide('buy')">КУПИТЬ</button>
+                        <button class="side-btn sell" id="order-side-sell" onclick="setOrderSide('sell')">ПРОДАТЬ</button>
+                    </div>
+
+                    <div class="form-group mt-1">
+                        <label>Отправитель (Клиент L2)</label>
+                        <select id="order-trader" class="select-field">
+                            <option value="Alice" selected>Алиса (Вы)</option>
+                            <option value="Bob">Боб (Второй клиент)</option>
+                            <option value="Charlie">Чарли (Третий клиент)</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Цена лимитного ордера (USD)</label>
+                        <div class="input-wrapper">
+                            <input type="number" id="order-price" value="60000" step="100">
+                            <span class="input-suffix">USD</span>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Количество (BTC)</label>
+                        <div class="input-wrapper">
+                            <input type="number" id="order-amount" value="1.0" step="0.1" min="0.1">
+                            <span class="input-suffix">BTC</span>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Кредитное плечо: <span id="leverage-label" class="text-cyan">10x</span></label>
+                        <input type="range" id="order-leverage" min="1" max="20" value="10" oninput="updateLeverageLabel(this.value)">
+                    </div>
+
+                    <div class="form-group">
+                        <label>Маршрутизация (Routing Policy)</label>
+                        <select id="order-routing" class="select-field">
+                            <option value="BEST_EXECUTION" selected>BEST EXECUTION (Умный роутер SOR)</option>
+                            <option value="FORCE_L2">FORCE L2 (Быстрый Секвенсор - &lt;1ms)</option>
+                            <option value="FORCE_SMR">FORCE SMR (Консенсус Валидаторов - 150ms)</option>
+                        </select>
+                    </div>
+
+                    <button class="btn btn-primary btn-block mt-1" id="submit-order-btn" onclick="submitOrder()">Отправить ордер на L2</button>
+                </div>
+
+                <!-- Order Book / Trade History Tabbed Card -->
+                <div class="card orderbook-card">
+                    <div class="orderbook-tabs">
+                        <button class="tab-btn active" id="tab-book" onclick="switchTab('book')">Стакан</button>
+                        <button class="tab-btn" id="tab-trades" onclick="switchTab('trades')">Сделки (Лента)</button>
+                    </div>
+                    
+                    <div id="book-tab-content">
+                        <div class="orderbook-header mt-1">
+                            <span>Цена (USD)</span>
+                            <span>Размер (BTC)</span>
+                            <span>Всего (USDC)</span>
+                        </div>
+                        <div class="orderbook-list asks" id="orderbook-asks">
+                            <!-- Asks will go here -->
+                        </div>
+                        <div class="orderbook-mid-price" id="orderbook-mid">
+                            $60,000.00
+                        </div>
+                        <div class="orderbook-list bids" id="orderbook-bids">
+                            <!-- Bids will go here -->
+                        </div>
+                    </div>
+
+                    <div id="trades-tab-content" style="display: none;">
+                        <div class="orderbook-header mt-1">
+                            <span>Время</span>
+                            <span>Цена (USD)</span>
+                            <span>Объем (BTC)</span>
+                        </div>
+                        <div class="recent-trades-list" id="recent-trades-list">
+                            <!-- Matched trades will go here -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- RIGHT PANEL: Network Monitor & Explorer -->
+        <section class="panel network-monitor">
+            <div class="panel-header">
+                <h2>Сетевой Мониторинг и Консенсус</h2>
+                <div class="metrics-quick">
+                    <span style="margin-right: 1rem;">Текущий TPS: <strong class="text-green" id="tps-counter">0</strong></span>
+                    <span style="display: flex; align-items: center; gap: 0.3rem;">
+                        <input type="checkbox" id="auto-trade-toggle" onchange="toggleAutoTrade(this.checked)" style="cursor: pointer; width: 14px; height: 14px;">
+                        <label for="auto-trade-toggle" class="text-cyan" style="cursor: pointer; font-size: 0.75rem; font-weight: 600;">Авто-симуляция клиентов</label>
+                    </span>
+                </div>
+            </div>
+
+            <!-- Visualization Area -->
+            <div class="card visualizer-card">
+                <div class="visualizer-header">
+                    <span>Схема прохождения транзакции (Smart Order Router)</span>
+                </div>
+                <div class="network-diagram-container">
+                    <svg class="network-svg" id="network-svg" width="100%" height="220">
+                        <!-- Definitions for arrows -->
+                        <defs>
+                            <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                                <path d="M 0 0 L 10 5 L 0 10 z" fill="#3f4a60"/>
+                            </marker>
+                            <marker id="arrow-active" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                                <path d="M 0 0 L 10 5 L 0 10 z" fill="#00d2ff"/>
+                            </marker>
+                        </defs>
+
+                        <!-- Nodes -->
+                        <!-- User / Client -->
+                        <circle cx="50" cy="110" r="22" class="node-circle client" id="node-client"/>
+                        <text x="50" y="114" text-anchor="middle" class="node-text">Клиент</text>
+
+                        <!-- Smart Order Router -->
+                        <circle cx="180" cy="110" r="24" class="node-circle router" id="node-router"/>
+                        <text x="180" y="114" text-anchor="middle" class="node-text">SOR</text>
+
+                        <!-- L2 Sequencer -->
+                        <circle cx="340" cy="50" r="22" class="node-circle sequencer" id="node-sequencer"/>
+                        <text x="340" y="54" text-anchor="middle" class="node-text">Seq L2</text>
+
+                        <!-- SMR consensus -->
+                        <circle cx="340" cy="170" r="22" class="node-circle smr" id="node-smr"/>
+                        <text x="340" y="174" text-anchor="middle" class="node-text">SMR L2</text>
+
+                        <!-- L1 Ledger -->
+                        <circle cx="500" cy="110" r="24" class="node-circle l1" id="node-l1"/>
+                        <text x="500" y="114" text-anchor="middle" class="node-text">L1 Ledger</text>
+
+                        <!-- Connections -->
+                        <line x1="72" y1="110" x2="156" y2="110" class="net-link" id="link-client-router" marker-end="url(#arrow)"/>
+                        <line x1="195" y1="92" x2="318" y2="58" class="net-link" id="link-router-seq" marker-end="url(#arrow)"/>
+                        <line x1="195" y1="128" x2="318" y2="162" class="net-link" id="link-router-smr" marker-end="url(#arrow)"/>
+                        
+                        <!-- Bridge links -->
+                        <line x1="362" y1="50" x2="476" y2="100" class="net-link dotted" id="link-seq-l1"/>
+                        <line x1="362" y1="170" x2="476" y2="120" class="net-link dotted" id="link-smr-l1"/>
+                        <path d="M 476 110 Q 250 240 72 110" fill="none" class="net-link dotted" id="link-l1-client" stroke-dasharray="4"/>
+
+                        <!-- Pulsing signals (initially hidden) -->
+                        <circle cx="0" cy="0" r="6" class="signal" id="signal-pulse" style="display:none;"/>
+                    </svg>
+                </div>
+            </div>
+
+            <!-- Validator Nodes list -->
+            <div class="card validators-card">
+                <div class="card-header-sm">L2 SMR Валидаторы (BFT консенсус)</div>
+                <div class="validators-grid mt-1" id="validators-list">
+                    <!-- Validator cards will be injected by js -->
+                </div>
+            </div>
+
+            <!-- Double Column for L1 blocks & Logs -->
+            <div class="explorer-grid mt-1">
+                <!-- L1 Ledger Explorer -->
+                <div class="card l1-explorer">
+                    <div class="card-header-sm">L1 Settlement Ledger (Блокчейн)</div>
+                    <div class="explorer-list mt-1" id="l1-blocks-list">
+                        <!-- L1 blocks will be injected here -->
+                    </div>
+                </div>
+
+                <!-- Logs console -->
+                <div class="card logs-console">
+                    <div class="card-header-sm">Консоль системных логов (Real-time)</div>
+                    <div class="logs-feed mt-1" id="logs-feed">
+                        <!-- System logs -->
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- BRIDGE ACTIONS MODAL -->
+    <div class="modal-backdrop" id="bridge-modal" style="display: none;">
+        <div class="modal-content card">
+            <div class="modal-header">
+                <h3 id="modal-title">Мост L1 <-> L2</h3>
+                <button class="close-btn" onclick="closeBridgeModal()">×</button>
+            </div>
+            <div class="modal-body mt-1">
+                <div class="form-group">
+                    <label id="modal-amount-label">Сумма (USDC)</label>
+                    <input type="number" id="modal-amount" value="5000" min="100">
+                </div>
+                <div id="modal-extra-info" class="text-sm mt-1 text-dim">
+                    Операция требует финализации транзакции на L1.
+                </div>
+                <button class="btn btn-primary btn-block mt-2" id="modal-submit-btn" onclick="executeBridgeAction()">Подтвердить операцию</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
