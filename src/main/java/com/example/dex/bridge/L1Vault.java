@@ -135,4 +135,42 @@ public final class L1Vault {
     public final L1ConsensusPoS getConsensus() {
         return consensus;
     }
+
+    public synchronized final boolean commitRollup(com.example.dex.models.RollupBatch batch) {
+        long timestamp = System.currentTimeMillis();
+        L1Transaction.Builder txBuilder = new L1Transaction.Builder(L1Transaction.TxType.ROLLUP_COMMIT)
+                .sender(l1AdminAddress)
+                .rollupBatch(batch)
+                .timestamp(timestamp);
+
+        L1Transaction unsignedTx = txBuilder.build();
+        String txSig;
+        try {
+            txSig = DexSignatureUtil.sign(unsignedTx.getSigningData(), l1AdminKeys.getPrivate());
+        } catch (Exception e) {
+            System.out.println("[L1_VAULT] Ошибка подписи транзакции Rollup: " + e.getMessage());
+            return false;
+        }
+        L1Transaction tx = txBuilder.signature(txSig).build();
+
+        long blockNum = consensus.getChainHeight() + 1;
+        String prevHash = consensus.getLastBlockHash();
+        long blockTimestamp = System.currentTimeMillis();
+
+        String blockSigningData = blockNum + ":" + prevHash + ":" + l1AdminAddress + ":" + blockTimestamp;
+        String blockSig;
+        try {
+            blockSig = DexSignatureUtil.sign(blockSigningData, l1AdminKeys.getPrivate());
+        } catch (Exception e) {
+            System.out.println("[L1_VAULT] Ошибка подписи блока Rollup: " + e.getMessage());
+            return false;
+        }
+
+        L1Block block = new L1Block(blockNum, List.of(tx), prevHash, l1AdminAddress, blockSig, blockTimestamp);
+        return consensus.processNewBlock(block);
+    }
+
+    public final List<com.example.dex.models.RollupBatch> getRollupBatches() {
+        return ledgerState.getRollupBatches();
+    }
 }

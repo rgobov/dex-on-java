@@ -225,30 +225,35 @@
                         <text x="50" y="114" text-anchor="middle" class="node-text">Клиент</text>
 
                         <!-- Smart Order Router -->
-                        <circle cx="180" cy="110" r="24" class="node-circle router" id="node-router"/>
-                        <text x="180" y="114" text-anchor="middle" class="node-text">SOR</text>
+                        <circle cx="160" cy="110" r="22" class="node-circle router" id="node-router"/>
+                        <text x="160" y="114" text-anchor="middle" class="node-text">SOR</text>
 
-                        <!-- L2 Sequencer -->
-                        <circle cx="340" cy="50" r="22" class="node-circle sequencer" id="node-sequencer"/>
-                        <text x="340" y="54" text-anchor="middle" class="node-text">Seq L2</text>
+                        <!-- L3 Sequencer -->
+                        <circle cx="270" cy="50" r="22" class="node-circle sequencer" id="node-sequencer"/>
+                        <text x="270" y="54" text-anchor="middle" class="node-text">L3 Seq</text>
 
-                        <!-- SMR consensus -->
-                        <circle cx="340" cy="170" r="22" class="node-circle smr" id="node-smr"/>
-                        <text x="340" y="174" text-anchor="middle" class="node-text">SMR L2</text>
+                        <!-- L3 SMR consensus -->
+                        <circle cx="270" cy="170" r="22" class="node-circle smr" id="node-smr"/>
+                        <text x="270" y="174" text-anchor="middle" class="node-text">L3 SMR</text>
 
-                        <!-- L1 Ledger -->
-                        <circle cx="500" cy="110" r="24" class="node-circle l1" id="node-l1"/>
-                        <text x="500" y="114" text-anchor="middle" class="node-text">L1 Ledger</text>
+                        <!-- L2 Settlement -->
+                        <circle cx="400" cy="110" r="22" class="node-circle l2" id="node-l2"/>
+                        <text x="400" y="114" text-anchor="middle" class="node-text">L2 Settl</text>
+
+                        <!-- L1 Escrow / Arbitrum -->
+                        <circle cx="520" cy="110" r="22" class="node-circle l1" id="node-l1"/>
+                        <text x="520" y="114" text-anchor="middle" class="node-text">L1 Arb</text>
 
                         <!-- Connections -->
-                        <line x1="72" y1="110" x2="156" y2="110" class="net-link" id="link-client-router" marker-end="url(#arrow)"/>
-                        <line x1="195" y1="92" x2="318" y2="58" class="net-link" id="link-router-seq" marker-end="url(#arrow)"/>
-                        <line x1="195" y1="128" x2="318" y2="162" class="net-link" id="link-router-smr" marker-end="url(#arrow)"/>
+                        <line x1="72" y1="110" x2="138" y2="110" class="net-link" id="link-client-router" marker-end="url(#arrow)"/>
+                        <line x1="176" y1="92" x2="252" y2="58" class="net-link" id="link-router-seq" marker-end="url(#arrow)"/>
+                        <line x1="176" y1="128" x2="252" y2="162" class="net-link" id="link-router-smr" marker-end="url(#arrow)"/>
                         
-                        <!-- Bridge links -->
-                        <line x1="362" y1="50" x2="476" y2="100" class="net-link dotted" id="link-seq-l1"/>
-                        <line x1="362" y1="170" x2="476" y2="120" class="net-link dotted" id="link-smr-l1"/>
-                        <path d="M 476 110 Q 250 240 72 110" fill="none" class="net-link dotted" id="link-l1-client" stroke-dasharray="4"/>
+                        <!-- Bridge & Rollup links -->
+                        <line x1="290" y1="50" x2="380" y2="100" class="net-link dotted" id="link-seq-l1"/>
+                        <line x1="290" y1="170" x2="380" y2="120" class="net-link dotted" id="link-smr-l1"/>
+                        <line x1="422" y1="110" x2="498" y2="110" class="net-link dotted" id="link-l2-l1"/>
+                        <path d="M 498 110 Q 250 240 72 110" fill="none" class="net-link dotted" id="link-l1-client" stroke-dasharray="4"/>
 
                         <!-- Pulsing signals (initially hidden) -->
                         <circle cx="0" cy="0" r="6" class="signal" id="signal-pulse" style="display:none;"/>
@@ -264,13 +269,21 @@
                 </div>
             </div>
 
-            <!-- Double Column for L1 blocks & Logs -->
+            <!-- Triple Column for L1 blocks, L2 rollups & Logs -->
             <div class="explorer-grid mt-1">
                 <!-- L1 Ledger Explorer -->
                 <div class="card l1-explorer">
-                    <div class="card-header-sm">L1 Settlement Ledger (Блокчейн)</div>
+                    <div class="card-header-sm">L1 Escrow (Arbitrum Bridge)</div>
                     <div class="explorer-list mt-1" id="l1-blocks-list">
                         <!-- L1 blocks will be injected here -->
+                    </div>
+                </div>
+
+                <!-- L2 Rollups Commitments Explorer -->
+                <div class="card l2-explorer">
+                    <div class="card-header-sm">L2 Settlement (Rollups)</div>
+                    <div class="explorer-list mt-1" id="l2-rollups-list" style="display:flex; flex-direction:column; gap:0.4rem;">
+                        <!-- L2 rollups will be injected here -->
                     </div>
                 </div>
 

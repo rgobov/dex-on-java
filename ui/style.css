@@ -522,6 +522,7 @@ input[type="range"]::-webkit-slider-thumb {
 .node-circle.router { stroke: var(--amber); }
 .node-circle.sequencer { stroke: var(--cyan); }
 .node-circle.smr { stroke: var(--purple); }
+.node-circle.l2 { stroke: #a855f7; } /* A vibrant purple-indigo color */
 .node-circle.l1 { stroke: var(--amber); }
 
 .node-circle.active {
@@ -660,7 +661,7 @@ input[type="range"]::-webkit-slider-thumb {
 /* Explorers & Logs */
 .explorer-grid {
     display: grid;
-    grid-template-columns: 48% 52%;
+    grid-template-columns: 31% 31% 38%;
     gap: 0.75rem;
     flex: 1;
     overflow: hidden;

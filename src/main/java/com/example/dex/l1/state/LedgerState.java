@@ -37,6 +37,7 @@ public final class LedgerState {
     private final List<DepositRecord> depositRecords = Collections.synchronizedList(new ArrayList<>());
     private long depositCounter = 0;
     private double totalVaultBalance = 0.0;
+    private final List<com.example.dex.models.RollupBatch> rollupBatches = Collections.synchronizedList(new ArrayList<>());
 
     public LedgerState() {}
 
@@ -131,10 +132,12 @@ public final class LedgerState {
         }
 
         // 3. Проверка nonce
-        long currentNonce = nonces.getOrDefault(tx.getSender(), 0L);
-        if (tx.getNonce() != currentNonce + 1) {
-            System.out.println("[L1_LEDGER] Отклонено: неверный nonce. Ожидался " + (currentNonce + 1) + ", получен " + tx.getNonce());
-            return false;
+        if (tx.getType() != L1Transaction.TxType.ROLLUP_COMMIT) {
+            long currentNonce = nonces.getOrDefault(tx.getSender(), 0L);
+            if (tx.getNonce() != currentNonce + 1) {
+                System.out.println("[L1_LEDGER] Отклонено: неверный nonce. Ожидался " + (currentNonce + 1) + ", получен " + tx.getNonce());
+                return false;
+            }
         }
 
         // 4. Выполнение логики в зависимости от типа
@@ -154,6 +157,9 @@ public final class LedgerState {
                 break;
             case SLASH:
                 success = executeSlash(tx);
+                break;
+            case ROLLUP_COMMIT:
+                success = executeRollupCommit(tx);
                 break;
         }
 
@@ -299,5 +305,20 @@ public final class LedgerState {
         System.out.println(String.format("[L1_LEDGER] !!! СЛЕШИНГ !!! Списано %.2f со стейка нарушителя %s", 
                 slashAmount, violator.substring(0, 15)));
         return true;
+    }
+
+    private final boolean executeRollupCommit(L1Transaction tx) {
+        if (tx.getRollupBatch() == null) {
+            System.out.println("[L1_LEDGER] Отклонено: транзакция ROLLUP_COMMIT не содержит RollupBatch!");
+            return false;
+        }
+        rollupBatches.add(tx.getRollupBatch());
+        System.out.println(String.format("[L1_LEDGER] Успешно зафиксирован Rollup Batch #%d с L3. Сделок: %d, State Root: %s", 
+                tx.getRollupBatch().getBatchId(), tx.getRollupBatch().getTrades().size(), tx.getRollupBatch().getStateRoot().substring(0, 10)));
+        return true;
+    }
+
+    public final List<com.example.dex.models.RollupBatch> getRollupBatches() {
+        return rollupBatches;
     }
 }

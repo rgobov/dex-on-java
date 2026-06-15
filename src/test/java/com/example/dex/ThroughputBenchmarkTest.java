@@ -8,6 +8,9 @@ import com.example.dex.margin.LiquidationEngine;
 import com.example.dex.margin.MarginManager;
 import com.example.dex.models.ChainTransaction;
 import com.example.dex.models.MarketSpecification;
+import com.example.dex.models.Trade;
+import com.example.dex.models.RollupBatch;
+import com.example.dex.cryptography.DexSignatureUtil;
 import com.example.dex.oracle.OracleService;
 import com.example.dex.router.RoutingPolicy;
 import com.example.dex.router.SmartOrderRouter;
@@ -17,6 +20,7 @@ import com.lmax.disruptor.dsl.Disruptor;
 import com.lmax.disruptor.dsl.ProducerType;
 import com.lmax.disruptor.util.DaemonThreadFactory;
 import org.junit.jupiter.api.Test;
+import java.security.KeyPair;
 
 import java.io.OutputStream;
 import java.io.PrintStream;
@@ -243,5 +247,77 @@ public class ThroughputBenchmarkTest {
         disruptorL2.shutdown();
 
         return (endTime - startTime) / tests;
+    }
+
+    @Test
+    public void runRollupAndCryptoBenchmarks() throws Exception {
+        System.out.println("\n=========================================================");
+        System.out.println("=== НАЧАЛО БЕНЧМАРКА КРИПТОГРАФИИ И ROLLUP-БАТЧИНГА ===");
+
+        // 1. Бенчмарк генерации и проверки RSA подписей (SHA256withRSA)
+        System.out.println("Генерация тестовой пары ключей...");
+        KeyPair kp = DexSignatureUtil.generateKeyPair();
+        String testData = "tx-id-12345:alice:bob:10000.0:12:1781516397345";
+        
+        System.out.println("Прогрев криптографии...");
+        for (int i = 0; i < 500; i++) {
+            String sig = DexSignatureUtil.sign(testData, kp.getPrivate());
+            DexSignatureUtil.verify(testData, sig, kp.getPublic());
+        }
+
+        // Замер подписи (Signing)
+        int signCount = 2000;
+        long startSign = System.nanoTime();
+        List<String> signatures = new ArrayList<>(signCount);
+        for (int i = 0; i < signCount; i++) {
+            signatures.add(DexSignatureUtil.sign(testData + i, kp.getPrivate()));
+        }
+        long endSign = System.nanoTime();
+        double signDuration = (endSign - startSign) / 1_000_000_000.0;
+        long signTps = (long) (signCount / signDuration);
+
+        // Замер проверки (Verification)
+        long startVerify = System.nanoTime();
+        for (int i = 0; i < signCount; i++) {
+            DexSignatureUtil.verify(testData + i, signatures.get(i), kp.getPublic());
+        }
+        long endVerify = System.nanoTime();
+        double verifyDuration = (endVerify - startVerify) / 1_000_000_000.0;
+        long verifyTps = (long) (signCount / verifyDuration);
+
+        System.out.println(String.format("RSA 2048 signing throughput     : %,d подписей/сек", signTps));
+        System.out.println(String.format("RSA 2048 verification throughput: %,d проверок/сек", verifyTps));
+
+        // 2. Бенчмарк вычисления корня состояния (State Root) роллапа
+        // Генерируем 100 000 сделок
+        System.out.println("\nГенерация 100,000 mock сделок для роллапа...");
+        List<Trade> mockTrades = new ArrayList<>(100_000);
+        for (int i = 0; i < 100_000; i++) {
+            mockTrades.add(new Trade("alice-" + i, "bob-" + i, "BTC-USD", 60000.0 + (i % 100), 0.5, 10.0, true, 10.0, true, System.currentTimeMillis()));
+        }
+
+        System.out.println("Прогрев хэширования роллапов...");
+        for (int i = 0; i < 5; i++) {
+            RollupBatch temp = new RollupBatch(1, mockTrades.subList(0, 1000), "prev-root-hash", "sig", System.currentTimeMillis());
+            temp.getStateRoot();
+        }
+
+        // Замер хэширования корня состояния при разных размерах батчей
+        int[] batchSizes = {100, 1000, 10000};
+        for (int size : batchSizes) {
+            int batchCount = 100_000 / size;
+            long startHash = System.nanoTime();
+            for (int b = 0; b < batchCount; b++) {
+                List<Trade> sub = mockTrades.subList(b * size, (b + 1) * size);
+                RollupBatch batch = new RollupBatch(b, sub, "prev-root-hash", "sig", System.currentTimeMillis());
+                batch.getStateRoot();
+            }
+            long endHash = System.nanoTime();
+            double hashDuration = (endHash - startHash) / 1_000_000_000.0;
+            long tradesHashedPerSec = (long) (100_000 / hashDuration);
+            System.out.println(String.format("Rollup Hashing (batch size = %5d): %,d сделок/сек (%,.1f батчей/сек)", 
+                    size, tradesHashedPerSec, batchCount / hashDuration));
+        }
+        System.out.println("=========================================================");
     }
 }

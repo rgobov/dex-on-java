@@ -12,6 +12,8 @@ import com.example.dex.margin.MarginManager;
 import com.example.dex.models.AccountBalance;
 import com.example.dex.models.ChainTransaction;
 import com.example.dex.models.MarketSpecification;
+import com.example.dex.models.RollupBatch;
+import com.example.dex.models.RollupPublisher;
 import com.example.dex.oracle.OracleService;
 import com.example.dex.router.RoutingPolicy;
 import com.example.dex.router.SmartOrderRouter;
@@ -206,5 +208,61 @@ public class EndToEndIntegrationTest {
         assertFalse(failWithdraw, "Вывод с неверными подписями валидаторов должен быть отклонен");
 
         System.out.println("END TO END INTEGRATION TEST SUCCESSFUL: L1 deposit -> L2 Bridge sync -> L2 trade -> L1 multi-sig withdrawal all passed successfully!");
+    }
+
+    @Test
+    public void testThreeLayerRollupPublishing() throws Exception {
+        // Создаем ключи для Алисы (покупатель) и Боба (продавец)
+        KeyPair aliceKeys = DexSignatureUtil.generateKeyPair();
+        String aliceAddr = DexSignatureUtil.encodePublicKey(aliceKeys.getPublic());
+
+        KeyPair bobKeys = DexSignatureUtil.generateKeyPair();
+        String bobAddr = DexSignatureUtil.encodePublicKey(bobKeys.getPublic());
+
+        // 1. Депозиты на L1 и синхронизация в L2
+        vault.deposit(aliceAddr, 10000.0);
+        vault.deposit(bobAddr, 10000.0);
+        bridge.syncDeposits();
+        Thread.sleep(150);
+
+        // 2. Инициализируем и запускаем издатель роллапов
+        RollupPublisher publisher = new RollupPublisher(l2Engine.handler, vault);
+        
+        // 3. Выполняем сделку на L2
+        String bobMsg = "PLACE_ORDER:sell:" + bobAddr + ":" + marketId + ":60000:1.0";
+        String bobSig = DexSignatureUtil.sign(bobMsg, bobKeys.getPrivate());
+        ChainTransaction bobOrder = new ChainTransaction.Builder(ChainTransaction.TxType.PLACE_ORDER)
+                .orderId("bob-order-r1").userId(bobAddr).marketId(marketId)
+                .isBuy(false).price(60000.0).amount(1.0).leverage(10.0).isIsolated(true)
+                .signature(bobSig).timestamp(System.currentTimeMillis()).build();
+        router.routeOrder(bobOrder, RoutingPolicy.FORCE_L2);
+        Thread.sleep(100);
+
+        String aliceMsg = "PLACE_ORDER:buy:" + aliceAddr + ":" + marketId + ":60000:1.0";
+        String aliceSig = DexSignatureUtil.sign(aliceMsg, aliceKeys.getPrivate());
+        ChainTransaction aliceOrder = new ChainTransaction.Builder(ChainTransaction.TxType.PLACE_ORDER)
+                .orderId("alice-order-r1").userId(aliceAddr).marketId(marketId)
+                .isBuy(true).price(60000.0).amount(1.0).leverage(10.0).isIsolated(true)
+                .signature(aliceSig).timestamp(System.currentTimeMillis()).build();
+        router.routeOrder(aliceOrder, RoutingPolicy.BEST_EXECUTION);
+        Thread.sleep(150);
+
+        // 4. Проверяем, что сделка совершена и сохранена на L3
+        assertTrue(l2Engine.handler.getExecutedTrades().size() > 0, "Сделка должна быть зафиксирована на L3");
+
+        // 5. Запускаем публикацию следующего батча вручную/через метод, чтобы не ждать sleep
+        boolean published = publisher.publishNextBatch();
+        assertTrue(published, "Батч роллапа должен быть успешно опубликован");
+
+        // 6. Проверяем состояние расчетного слоя L2 (в vault)
+        List<RollupBatch> batches = vault.getRollupBatches();
+        assertEquals(1, batches.size(), "На расчетном слое L2 должен присутствовать 1 опубликованный батч");
+        RollupBatch batch = batches.get(0);
+        assertEquals(1, batch.getBatchId());
+        assertEquals(1, batch.getTrades().size());
+        assertNotNull(batch.getStateRoot());
+        assertNotEquals(batch.getPrevStateRoot(), batch.getStateRoot());
+
+        System.out.println("THREE-LAYER ARCHITECTURE TEST SUCCESSFUL: L3 trade successfully rolled up and committed to L2 Settlement!");
     }
 }

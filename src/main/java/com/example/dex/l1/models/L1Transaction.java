@@ -13,7 +13,8 @@ public final class L1Transaction implements Serializable {
         WITHDRAW,
         STAKE,
         UNSTAKE,
-        SLASH
+        SLASH,
+        ROLLUP_COMMIT
     }
 
     private final String txId;
@@ -25,6 +26,7 @@ public final class L1Transaction implements Serializable {
     private final List<String> validatorsMultisig;
     private final long timestamp;
     private final long nonce;
+    private final com.example.dex.models.RollupBatch rollupBatch;
 
     private L1Transaction(Builder builder) {
         this.txId = builder.txId;
@@ -36,6 +38,7 @@ public final class L1Transaction implements Serializable {
         this.validatorsMultisig = Collections.unmodifiableList(new ArrayList<>(builder.validatorsMultisig));
         this.timestamp = builder.timestamp;
         this.nonce = builder.nonce;
+        this.rollupBatch = builder.rollupBatch;
     }
 
     public final String getTxId() { return txId; }
@@ -47,6 +50,7 @@ public final class L1Transaction implements Serializable {
     public final List<String> getValidatorsMultisig() { return validatorsMultisig; }
     public final long getTimestamp() { return timestamp; }
     public final long getNonce() { return nonce; }
+    public final com.example.dex.models.RollupBatch getRollupBatch() { return rollupBatch; }
 
     public final String getSigningData() {
         return type.name() + ":" + sender + ":" + recipient + ":" + amount + ":" + nonce + ":" + timestamp;
@@ -62,6 +66,7 @@ public final class L1Transaction implements Serializable {
         private final List<String> validatorsMultisig = new ArrayList<>();
         private long timestamp = System.currentTimeMillis();
         private long nonce = 0L;
+        private com.example.dex.models.RollupBatch rollupBatch = null;
 
         public Builder(TxType type) {
             this.type = type;
@@ -75,6 +80,7 @@ public final class L1Transaction implements Serializable {
         public Builder addValidatorSignature(String sig) { this.validatorsMultisig.add(sig); return this; }
         public Builder timestamp(long timestamp) { this.timestamp = timestamp; return this; }
         public Builder nonce(long nonce) { this.nonce = nonce; return this; }
+        public Builder rollupBatch(com.example.dex.models.RollupBatch rollupBatch) { this.rollupBatch = rollupBatch; return this; }
 
         public final L1Transaction build() {
             if (txId == null || txId.isEmpty()) {

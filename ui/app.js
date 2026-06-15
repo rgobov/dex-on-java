@@ -26,6 +26,7 @@ let validators = [];
 
 let logs = [];
 let tps = 0;
+let lastRenderedBatchId = 0;
 
 // --- Init & UI Updates ---
 window.onload = function() {
@@ -88,6 +89,19 @@ async function fetchBackendState() {
                 amount: 0
             };
         });
+
+        // Check rollup batches
+        const rollupBatches = state.rollupBatches || [];
+        if (rollupBatches.length > 0) {
+            const latestBatch = rollupBatches[rollupBatches.length - 1];
+            if (latestBatch.batchId > lastRenderedBatchId) {
+                if (lastRenderedBatchId > 0) {
+                    animateRollupCommitment(latestBatch.batchId);
+                }
+                lastRenderedBatchId = latestBatch.batchId;
+            }
+        }
+        renderRollupBatches(rollupBatches);
 
         // Fetch Orderbook & Trades
         await fetchOrderBook();
@@ -628,10 +642,10 @@ function animateSignalPath(pathType, callback) {
     }
 
     // Step 1: Client to Router
-    animateDot(50, 110, 180, 110, 250, () => {
+    animateDot(50, 110, 160, 110, 250, () => {
         // Step 2: Router to destination
         if (pathType === "L2") {
-            animateDot(180, 110, 340, 50, 250, () => {
+            animateDot(160, 110, 270, 50, 250, () => {
                 pulse.style.display = "none";
                 setTimeout(() => {
                     document.getElementById("node-sequencer").classList.remove("active");
@@ -639,7 +653,7 @@ function animateSignalPath(pathType, callback) {
                 callback();
             });
         } else {
-            animateDot(180, 110, 340, 170, 350, () => {
+            animateDot(160, 110, 270, 170, 350, () => {
                 pulse.style.display = "none";
                 setTimeout(() => {
                     document.getElementById("node-smr").classList.remove("active");
@@ -658,24 +672,74 @@ function animateBridgeTransfer(type, callback) {
     if (type === "deposit") {
         pulse.className.baseVal = "signal";
         // L1 -> Client -> Router -> L2
-        animateDot(500, 110, 50, 110, 400, () => {
-            animateDot(50, 110, 180, 110, 250, () => {
-                animateDot(180, 110, 340, 50, 250, () => {
+        animateDot(520, 110, 50, 110, 400, () => {
+            animateDot(50, 110, 160, 110, 250, () => {
+                animateDot(160, 110, 270, 50, 250, () => {
                     pulse.style.display = "none";
                     callback();
                 });
             });
         });
     } else {
-        // Withdraw: SMR validator consensus -> L1 Ledger
+        // Withdraw: SMR validator consensus -> L2 Settlement -> L1 Escrow
         pulse.className.baseVal = "signal smr-signal";
         document.getElementById("node-smr").classList.add("active");
-        animateDot(340, 170, 500, 110, 450, () => {
-            document.getElementById("node-smr").classList.remove("active");
-            pulse.style.display = "none";
-            callback();
+        animateDot(270, 170, 400, 110, 300, () => {
+            animateDot(400, 110, 520, 110, 250, () => {
+                document.getElementById("node-smr").classList.remove("active");
+                pulse.style.display = "none";
+                callback();
+            });
         });
     }
+}
+
+function renderRollupBatches(batches) {
+    const list = document.getElementById("l2-rollups-list");
+    if (!list) return;
+    if (!batches || batches.length === 0) {
+        list.innerHTML = `<div style="color:var(--text-dim); text-align:center; padding:1rem; font-size:0.7rem;">Нет опубликованных роллапов</div>`;
+        return;
+    }
+    list.innerHTML = batches.map(b => `
+        <div class="block-item" style="border-color: rgba(168, 85, 247, 0.25);">
+            <div class="block-header">
+                <span class="text-purple">Rollup Batch #${b.batchId}</span>
+                <span class="text-dim" style="font-size:0.6rem;">${new Date(b.timestamp).toLocaleTimeString()}</span>
+            </div>
+            <div class="block-txs">
+                Сделок упаковано: <strong>${b.tradesCount}</strong>
+            </div>
+            <div style="font-size:0.6rem; color:var(--cyan); margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
+                State Root: ${b.stateRoot.substring(0, 16)}...
+            </div>
+        </div>
+    `).join('');
+}
+
+function animateRollupCommitment(batchId) {
+    const pulse = document.getElementById("signal-pulse");
+    pulse.style.display = "block";
+    pulse.setAttribute("r", "8");
+    pulse.className.baseVal = "signal smr-signal"; // purple
+    document.getElementById("node-sequencer").classList.add("active");
+    
+    animateDot(270, 50, 400, 110, 600, () => {
+        document.getElementById("node-sequencer").classList.remove("active");
+        pulse.style.display = "none";
+        
+        // Flash L2 Settlement node
+        const l2Node = document.getElementById("node-l2");
+        if (l2Node) {
+            l2Node.style.fill = "rgba(168, 85, 247, 0.3)";
+            l2Node.style.filter = "drop-shadow(0 0 12px #a855f7)";
+            setTimeout(() => {
+                l2Node.style.fill = "";
+                l2Node.style.filter = "";
+            }, 600);
+        }
+        log(`L2_SETTLEMENT: Зафиксирован Rollup Batch #${batchId} на расчетном уровне L2!`, "success");
+    });
 }
 
 function animateFailedPath(linkId) {

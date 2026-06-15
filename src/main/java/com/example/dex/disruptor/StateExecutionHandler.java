@@ -23,7 +23,7 @@ public class StateExecutionHandler implements EventHandler<ChainTxEvent> {
     private final MarginManager marginManager;
     private final LiquidationEngine liquidationEngine;
     private final FundingCalculator fundingCalculator;
-    private final java.util.List<Trade> executedTrades = new java.util.concurrent.CopyOnWriteArrayList<>();
+    private final java.util.List<Trade> executedTrades = java.util.Collections.synchronizedList(new java.util.ArrayList<>());
 
     public StateExecutionHandler(MarginManager marginManager, LiquidationEngine liquidationEngine, FundingCalculator fundingCalculator) {
         this.marginManager = marginManager;

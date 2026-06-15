@@ -78,6 +78,7 @@ public final class DexServer {
     private static TradingEngine l2Engine;
     private static TradingEngine smrEngine;
     private static SmartOrderRouter router;
+    private static com.example.dex.models.RollupPublisher rollupPublisher;
 
     public static void main(String[] args) throws Exception {
         System.out.println("=== Инициализация L1/L2 DEX бэкенда ===");
@@ -125,6 +126,17 @@ public final class DexServer {
 
         // Синхронизируем начальные депозиты в L2
         bridge.syncDeposits();
+
+        // 6. Инициализация и запуск RollupPublisher
+        rollupPublisher = new com.example.dex.models.RollupPublisher(l2Engine.handler, vault);
+        rollupPublisher.start();
+
+        // Shutdown hook
+        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+            if (rollupPublisher != null) rollupPublisher.stop();
+            if (l2Engine != null) l2Engine.stop();
+            if (smrEngine != null) smrEngine.stop();
+        }));
 
         // Запуск Javalin
         Javalin app = Javalin.create(config -> {
@@ -208,7 +220,25 @@ public final class DexServer {
             }
             state.put("l1Blocks", blocks);
 
+            // Добавляем список опубликованных батчей роллапа
+            List<Map<String, Object>> rollupsList = new ArrayList<>();
+            for (com.example.dex.models.RollupBatch batch : vault.getRollupBatches()) {
+                Map<String, Object> rb = new HashMap<>();
+                rb.put("batchId", batch.getBatchId());
+                rb.put("tradesCount", batch.getTrades().size());
+                rb.put("prevStateRoot", batch.getPrevStateRoot());
+                rb.put("stateRoot", batch.getStateRoot());
+                rb.put("timestamp", batch.getTimestamp());
+                rollupsList.add(rb);
+            }
+            state.put("rollupBatches", rollupsList);
+
             ctx.json(state);
+        });
+
+        // GET /api/rollups: Получить все опубликованные батчи роллапа
+        app.get("/api/rollups", ctx -> {
+            ctx.json(vault.getRollupBatches());
         });
 
         // POST /api/deposit: Депозит на L2 через мост
