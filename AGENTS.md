@@ -32,6 +32,9 @@ java -cp target/dex-on-java-1.0-SNAPSHOT.jar:$(mvn dependency:build-classpath -q
 
 ## Architecture
 
+Full design doc in [`ARCHITECTURE.md`](ARCHITECTURE.md) — includes three-layer vision (L1 Arbitrum → L2 PBFT → L3 Execution).  
+Current (pre-refactor) state below.
+
 Single Maven module, no monorepo. Packages under `src/main/java/com/example/dex/`:
 
 | Package | Purpose |
