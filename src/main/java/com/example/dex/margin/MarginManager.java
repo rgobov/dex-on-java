@@ -346,6 +346,18 @@ public class MarginManager {
         return balances.keySet();
     }
 
+    public java.util.Set<String> getRegisteredMarkets() {
+        return markets.keySet();
+    }
+
+    public Map<String, AccountBalance> getAllBalances() {
+        return java.util.Collections.unmodifiableMap(balances);
+    }
+
+    public Map<String, Map<String, Position>> getAllPositions() {
+        return java.util.Collections.unmodifiableMap(positions);
+    }
+
     public void deposit(String userId, double amount) {
         AccountBalance balance = balances.get(userId);
         if (balance == null) {

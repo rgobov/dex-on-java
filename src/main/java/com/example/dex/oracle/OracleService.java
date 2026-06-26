@@ -1,5 +1,6 @@
 package com.example.dex.oracle;
 
+import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -35,5 +36,9 @@ public class OracleService {
             throw new IllegalArgumentException("Цена для рынка " + marketId + " не найдена в оракуле");
         }
         return price;
+    }
+
+    public Map<String, Double> getAllPrices() {
+        return new java.util.HashMap<>(prices);
     }
 }

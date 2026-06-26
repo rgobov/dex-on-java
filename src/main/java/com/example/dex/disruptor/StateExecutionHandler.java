@@ -43,6 +43,10 @@ public class StateExecutionHandler implements EventHandler<ChainTxEvent> {
         return orderBooks.get(marketId);
     }
 
+    public java.util.Set<String> getRegisteredMarkets() {
+        return orderBooks.keySet();
+    }
+
     @Override
     public void onEvent(ChainTxEvent event, long sequence, boolean endOfBatch) throws Exception {
         ChainTransaction tx = event.getTransaction();

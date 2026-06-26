@@ -12,8 +12,6 @@ import com.example.dex.models.Trade;
 import com.example.dex.models.RollupBatch;
 import com.example.dex.cryptography.DexSignatureUtil;
 import com.example.dex.oracle.OracleService;
-import com.example.dex.router.RoutingPolicy;
-import com.example.dex.router.SmartOrderRouter;
 import com.lmax.disruptor.RingBuffer;
 import com.lmax.disruptor.YieldingWaitStrategy;
 import com.lmax.disruptor.dsl.Disruptor;
@@ -70,7 +68,7 @@ public class ThroughputBenchmarkTest {
             System.setOut(originalOut);
         }
         
-        originalOut.println("=== ПРОГРЕВ ЗАВЕРШЕН, ЗАПУСК ДИАГНОСТИЧЕСКИХ ИТЕРАЦИЙ ===");
+        originalOut.println("=== ПРОГРЕВ ЗАВЕРШЕН, ЗАПУСК ИЗМЕРИТЕЛЬНЫХ ИТЕРАЦИЙ ===");
 
         long totalL2Tps = 0;
         long totalSmrTps = 0;
@@ -99,11 +97,6 @@ public class ThroughputBenchmarkTest {
         System.out.println(String.format("Средний L2 Sequencer TPS: %,d транзакций/сек", avgL2Tps));
         System.out.println(String.format("Средний SMR Node TPS    : %,d транзакций/сек", avgSmrTps));
         System.out.println("Разница                 : L2 Секвенсор быстрее в " + String.format("%.2f", (double) avgL2Tps / avgSmrTps) + " раз.");
-        
-        // Дополнительный тест: замер задержки SOR
-        long avgSorLatencyNs = runSorLatencyBenchmark();
-        System.out.println(String.format("Средняя задержка Smart Order Router (SOR): %,d наносекунд (%,.3f микросекунд)", 
-                avgSorLatencyNs, avgSorLatencyNs / 1000.0));
         System.out.println("=========================================================");
     }
 
@@ -177,85 +170,11 @@ public class ThroughputBenchmarkTest {
         return (long) (txCount / durationSeconds);
     }
 
-    private long runSorLatencyBenchmark() throws Exception {
-        OracleService oracle = new OracleService();
-        oracle.setPrice(marketId, 60000.0);
-        MarginManager marginManager = new MarginManager(oracle);
-        marginManager.registerMarket(spec);
-
-        CountDownLatch latch = new CountDownLatch(1);
-        StateExecutionHandler handlerSMR = new StateExecutionHandler(
-                marginManager,
-                new LiquidationEngine(marginManager, oracle),
-                new FundingCalculator(marginManager, oracle)
-        );
-        handlerSMR.registerMarket(marketId);
-
-        Disruptor<ChainTxEvent> disruptorSMR = new Disruptor<>(
-                new ChainTxEventFactory(),
-                1024,
-                DaemonThreadFactory.INSTANCE,
-                ProducerType.SINGLE,
-                new YieldingWaitStrategy()
-        );
-        disruptorSMR.handleEventsWith(handlerSMR);
-        RingBuffer<ChainTxEvent> bufferSMR = disruptorSMR.start();
-
-        StateExecutionHandler handlerL2 = new StateExecutionHandler(
-                marginManager,
-                new LiquidationEngine(marginManager, oracle),
-                new FundingCalculator(marginManager, oracle)
-        );
-        handlerL2.registerMarket(marketId);
-
-        Disruptor<ChainTxEvent> disruptorL2 = new Disruptor<>(
-                new ChainTxEventFactory(),
-                1024,
-                DaemonThreadFactory.INSTANCE,
-                ProducerType.SINGLE,
-                new YieldingWaitStrategy()
-        );
-        disruptorL2.handleEventsWith(handlerL2);
-        RingBuffer<ChainTxEvent> bufferL2 = disruptorL2.start();
-
-        SmartOrderRouter router = new SmartOrderRouter(bufferSMR, handlerSMR, bufferL2, handlerL2);
-
-        ChainTransaction tx = new ChainTransaction.Builder(ChainTransaction.TxType.PLACE_ORDER)
-                .orderId("bench-sor-ord")
-                .userId("alice")
-                .marketId(marketId)
-                .isBuy(true)
-                .price(60000.0)
-                .amount(1.0)
-                .isLimit(true)
-                .build();
-
-        // Прогреваем SOR
-        for (int i = 0; i < 5000; i++) {
-            router.routeOrder(tx, RoutingPolicy.BEST_EXECUTION);
-        }
-
-        // Замеряем 10 000 вызовов
-        int tests = 10_000;
-        long startTime = System.nanoTime();
-        for (int i = 0; i < tests; i++) {
-            router.routeOrder(tx, RoutingPolicy.BEST_EXECUTION);
-        }
-        long endTime = System.nanoTime();
-
-        disruptorSMR.shutdown();
-        disruptorL2.shutdown();
-
-        return (endTime - startTime) / tests;
-    }
-
     @Test
     public void runRollupAndCryptoBenchmarks() throws Exception {
         System.out.println("\n=========================================================");
         System.out.println("=== НАЧАЛО БЕНЧМАРКА КРИПТОГРАФИИ И ROLLUP-БАТЧИНГА ===");
 
-        // 1. Бенчмарк генерации и проверки RSA подписей (SHA256withRSA)
-        System.out.println("Генерация тестовой пары ключей...");
         KeyPair kp = DexSignatureUtil.generateKeyPair();
         String testData = "tx-id-12345:alice:bob:10000.0:12:1781516397345";
         
@@ -265,7 +184,6 @@ public class ThroughputBenchmarkTest {
             DexSignatureUtil.verify(testData, sig, kp.getPublic());
         }
 
-        // Замер подписи (Signing)
         int signCount = 2000;
         long startSign = System.nanoTime();
         List<String> signatures = new ArrayList<>(signCount);
@@ -276,7 +194,6 @@ public class ThroughputBenchmarkTest {
         double signDuration = (endSign - startSign) / 1_000_000_000.0;
         long signTps = (long) (signCount / signDuration);
 
-        // Замер проверки (Verification)
         long startVerify = System.nanoTime();
         for (int i = 0; i < signCount; i++) {
             DexSignatureUtil.verify(testData + i, signatures.get(i), kp.getPublic());
@@ -288,8 +205,6 @@ public class ThroughputBenchmarkTest {
         System.out.println(String.format("RSA 2048 signing throughput     : %,d подписей/сек", signTps));
         System.out.println(String.format("RSA 2048 verification throughput: %,d проверок/сек", verifyTps));
 
-        // 2. Бенчмарк вычисления корня состояния (State Root) роллапа
-        // Генерируем 100 000 сделок
         System.out.println("\nГенерация 100,000 mock сделок для роллапа...");
         List<Trade> mockTrades = new ArrayList<>(100_000);
         for (int i = 0; i < 100_000; i++) {
@@ -302,7 +217,6 @@ public class ThroughputBenchmarkTest {
             temp.getStateRoot();
         }
 
-        // Замер хэширования корня состояния при разных размерах батчей
         int[] batchSizes = {100, 1000, 10000};
         for (int size : batchSizes) {
             int batchCount = 100_000 / size;
