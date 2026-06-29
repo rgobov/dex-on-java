@@ -1,5 +1,6 @@
 package com.example.dex.server;
 
+import com.example.dex.bridge.ArbitrumBridge;
 import com.example.dex.bridge.L1Vault;
 import com.example.dex.bridge.L2Bridge;
 import com.example.dex.cryptography.DexSignatureUtil;
@@ -29,6 +30,16 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 
+/**
+ * Dev-only single-node server. NOT for production use.
+ * <p>
+ * Для production используйте {@link com.example.dex.server.ValidatorNode}
+ * с PBFT кластером из 3 валидаторов и Arbitrum Bridge.
+ * <p>
+ * WARNING: Единый сервер создаёт регуляторный риск (нелицензированная биржевая деятельность).
+ * Данный класс предназначен исключительно для локальной разработки и отладки.
+ */
+@Deprecated(since = "1.0", forRemoval = false)
 public final class DexServer {
 
     private static class ExecutionEngine {
@@ -121,6 +132,11 @@ public final class DexServer {
 
     public static void main(String[] args) throws Exception {
         System.out.println("=== Инициализация DEX ===");
+        System.out.println("███████████████████████████████████████████████████████████████████████████████████");
+        System.out.println("█  WARNING: DexServer — SINGLE-NODE DEV SERVER.                                  █");
+        System.out.println("█  Не используйте в production. Единый сервер создаёт регуляторный риск.         █");
+        System.out.println("█  Для production используйте ValidatorNode с PBFT кластером из 3 валидаторов.   █");
+        System.out.println("███████████████████████████████████████████████████████████████████████████████████");
 
         Path dataDir = Path.of(args.length > 0 ? args[0] : "data");
 
@@ -151,7 +167,10 @@ public final class DexServer {
         bridge = new L2Bridge(vault, engine.ringBuffer);
         bridge.syncDeposits();
 
-        rollupPublisher = new RollupPublisher(engine.handler, vault);
+        // Use ArbitrumBridge for rollup publishing (DexServer also gets one for testing)
+        ArbitrumBridge arbitrumBridge = new ArbitrumBridge(30_000);
+        arbitrumBridge.start();
+        rollupPublisher = new RollupPublisher(engine.handler, arbitrumBridge);
         rollupPublisher.start();
 
         snapshotTimer = Executors.newSingleThreadScheduledExecutor(r -> {

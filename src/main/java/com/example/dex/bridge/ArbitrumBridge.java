@@ -1,6 +1,7 @@
 package com.example.dex.bridge;
 
 import com.example.dex.models.ChainTransaction;
+import com.example.dex.models.RollupBatch;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
@@ -54,6 +55,9 @@ public class ArbitrumBridge {
     // Simulated L1 vault balance tracking
     private final Map<String, Double> l1Balances = new ConcurrentHashMap<>();
 
+    // Rollup batches posted to L1
+    private final List<RollupBatch> rollupBatches = new CopyOnWriteArrayList<>();
+
     // Challenge window in ms (real Arbitrum: ~7 days = 604800000 ms)
     private final long challengeWindowMs;
     private final long ticketCheckMs;
@@ -97,6 +101,7 @@ public class ArbitrumBridge {
                 ChainTransaction tx = new ChainTransaction.Builder(ChainTransaction.TxType.DEPOSIT)
                         .userId(ticket.from)
                         .amount(ticket.amount)
+                        .orderId(ticket.ticketId)
                         .timestamp(System.currentTimeMillis())
                         .build();
                 outbox.add(tx);
@@ -136,6 +141,18 @@ public class ArbitrumBridge {
                 return;
             }
         }
+    }
+
+    // === L1: Rollup batch posting ===
+
+    public void postBatch(RollupBatch batch) {
+        rollupBatches.add(batch);
+        System.out.println("[ARBITRUM] Rollup batch #" + batch.getBatchId()
+                + " posted to L1. StateRoot=" + batch.getStateRoot().substring(0, 12) + "...");
+    }
+
+    public List<RollupBatch> getRollupBatches() {
+        return List.copyOf(rollupBatches);
     }
 
     // === Query ===

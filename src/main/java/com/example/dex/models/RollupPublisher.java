@@ -1,6 +1,6 @@
 package com.example.dex.models;
 
-import com.example.dex.bridge.L1Vault;
+import com.example.dex.bridge.ArbitrumBridge;
 import com.example.dex.cryptography.DexSignatureUtil;
 import com.example.dex.disruptor.StateExecutionHandler;
 
@@ -10,12 +10,12 @@ import java.util.List;
 
 /**
  * Класс RollupPublisher отвечает за периодический сбор совершенных на L3 сделок,
- * их упаковку в RollupBatch и отправку (публикацию) в расчетную сеть L2 (через L1Vault).
+ * их упаковку в RollupBatch и отправку (публикацию) в L1 (через ArbitrumBridge).
  */
 public final class RollupPublisher {
 
     private final StateExecutionHandler stateExecutionHandler;
-    private final L1Vault vault;
+    private final ArbitrumBridge bridge;
     private final KeyPair publisherKeys;
     private final Thread workerThread;
     
@@ -24,9 +24,9 @@ public final class RollupPublisher {
     private long nextBatchId = 1;
     private String prevStateRoot = "0000000000000000000000000000000000000000000000000000000000000000";
 
-    public RollupPublisher(StateExecutionHandler stateExecutionHandler, L1Vault vault) {
+    public RollupPublisher(StateExecutionHandler stateExecutionHandler, ArbitrumBridge bridge) {
         this.stateExecutionHandler = stateExecutionHandler;
-        this.vault = vault;
+        this.bridge = bridge;
         try {
             this.publisherKeys = DexSignatureUtil.generateKeyPair();
         } catch (Exception e) {
@@ -100,18 +100,18 @@ public final class RollupPublisher {
                 timestamp
         );
 
-        // Отправляем батч в L2 Settlement
-        boolean success = vault.commitRollup(batch);
-        if (success) {
-            System.out.println(String.format("[ROLLUP_PUBLISHER] Успешно отправлен батч роллапа #%d. Сделок: %d, StateRoot: %s", 
+        // Отправляем батч в Arbitrum L1
+        try {
+            bridge.postBatch(batch);
+            System.out.println(String.format("[ROLLUP_PUBLISHER] Опубликован батч роллапа #%d. Сделок: %d, StateRoot: %s",
                     batch.getBatchId(), batch.getTrades().size(), batch.getStateRoot().substring(0, 12)));
-            
+
             this.lastTradeIndex = currentSize;
             this.prevStateRoot = batch.getStateRoot();
             this.nextBatchId++;
             return true;
-        } else {
-            System.out.println("[ROLLUP_PUBLISHER] Не удалось зафиксировать батч роллапа #" + nextBatchId + " в консенсусе L2!");
+        } catch (Exception e) {
+            System.out.println("[ROLLUP_PUBLISHER] Ошибка публикации батча #" + nextBatchId + ": " + e.getMessage());
             return false;
         }
     }

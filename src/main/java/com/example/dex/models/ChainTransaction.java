@@ -11,6 +11,7 @@ public class ChainTransaction {
     public enum TxType {
         DEPOSIT,
         WITHDRAW,
+        WITHDRAW_SIGNED,
         PLACE_ORDER,
         CANCEL_ORDER,
         UPDATE_ORACLE

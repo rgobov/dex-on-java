@@ -1,5 +1,8 @@
 package com.example.dex.server;
 
+import com.example.dex.bridge.ArbitrumBridge;
+import com.example.dex.bridge.ArbitrumBridgePoller;
+import com.example.dex.bridge.WithdrawalFinalizer;
 import com.example.dex.disruptor.ChainTxEvent;
 import com.example.dex.disruptor.ChainTxEventFactory;
 import com.example.dex.disruptor.StateExecutionHandler;
@@ -43,6 +46,10 @@ public final class ValidatorNode {
     private PbftConsensus consensus;
     private LeaderElector leaderElector;
     private ValidatorNetwork network;
+    private ArbitrumBridge bridge;
+    private ArbitrumBridgePoller bridgePoller;
+    private WithdrawalFinalizer withdrawalFinalizer;
+    private RollupPublisher rollupPublisher;
     private Javalin api;
     private ScheduledExecutorService consensusRunner;
     private final AtomicLong txSeq = new AtomicLong(0);
@@ -79,6 +86,10 @@ public final class ValidatorNode {
             if (snapshot != null) {
                 snapshot.restoreInto(handler, marginManager, oracle);
                 txSeq.set(snapshot.sequence);
+                // Restore processed bridge ticket IDs
+                if (snapshot.processedBridgeTicketIds != null) {
+                    handler.getProcessedBridgeTxIds().addAll(snapshot.processedBridgeTicketIds);
+                }
                 for (ChainTransaction tx : flatFileStore.replayAllFromWal()) {
                     publishTxSync(tx);
                     txSeq.incrementAndGet();
@@ -92,6 +103,25 @@ public final class ValidatorNode {
         );
         disruptor.handleEventsWith(handler);
         ringBuffer = disruptor.start();
+
+        // L1: Arbitrum Bridge
+        // В production challengeWindowMs = 604800000 (7 дней),
+        // для dev оставляем 30000ms для тестирования
+        long challengeWindowMs = 30_000;
+        bridge = new ArbitrumBridge(challengeWindowMs);
+        bridge.start();
+
+        // Bridge Poller: читает outbox bridge → добавляет в mempool
+        bridgePoller = new ArbitrumBridgePoller(bridge, mempool, handler.getProcessedBridgeTxIds());
+        bridgePoller.start();
+
+        // Withdrawal Finalizer: L2 executed → L1 bridge
+        withdrawalFinalizer = new WithdrawalFinalizer(bridge, handler);
+        withdrawalFinalizer.start();
+
+        // Rollup Publisher: каждые N секунд публикует state root в L1
+        rollupPublisher = new RollupPublisher(handler, bridge);
+        rollupPublisher.start();
 
         // L2: Mempool + Consensus
         mempool = new Mempool();
@@ -156,6 +186,10 @@ public final class ValidatorNode {
     }
 
     public void stop() {
+        if (rollupPublisher != null) rollupPublisher.stop();
+        if (withdrawalFinalizer != null) withdrawalFinalizer.stop();
+        if (bridgePoller != null) bridgePoller.stop();
+        if (bridge != null) bridge.stop();
         if (consensusRunner != null) consensusRunner.shutdown();
         if (network != null) network.stop();
         if (api != null) api.stop();
@@ -219,23 +253,48 @@ public final class ValidatorNode {
             String userId = (String) body.get("userId");
             double amount = Double.parseDouble(body.get("amount").toString());
 
-            if (marginManager.getBalance(userId) == null) {
-                marginManager.registerUser(userId, 0.0);
-            }
-            ChainTransaction tx = new ChainTransaction.Builder(ChainTransaction.TxType.DEPOSIT)
-                    .userId(userId).amount(amount).build();
-            mempool.add(tx);
-            ctx.json(Map.of("status", "accepted", "message", "Deposit submitted to mempool"));
+            // Создаём RetryableTicket в ArbitrumBridge (симуляция L1→L2 депозита)
+            // В production: пользователь отправляет USDC в L1 Arbitrum контракт,
+            // валидаторы читают RetryableTicket из L1→L2 inbox.
+            bridge.depositL1(userId, amount);
+            bridge.createRetryableTicket(userId, amount);
+
+            ctx.json(Map.of("status", "accepted", "message",
+                    "Deposit ticket submitted to Arbitrum bridge. Funds will arrive after bridge processing (~2s)"));
         });
 
         api.post("/api/withdraw", ctx -> {
             Map<String, Object> body = ctx.bodyAsClass(Map.class);
             String userId = (String) body.get("userId");
             double amount = Double.parseDouble(body.get("amount").toString());
-            ChainTransaction tx = new ChainTransaction.Builder(ChainTransaction.TxType.WITHDRAW)
-                    .userId(userId).amount(amount).build();
+            String signature = (String) body.get("signature");
+            if (signature == null || signature.isBlank()) {
+                ctx.status(HttpStatus.BAD_REQUEST);
+                ctx.json(Map.of("status", "error", "message", "Signature required for withdrawal"));
+                return;
+            }
+            ChainTransaction tx = new ChainTransaction.Builder(ChainTransaction.TxType.WITHDRAW_SIGNED)
+                    .userId(userId).amount(amount).signature(signature)
+                    .timestamp(System.currentTimeMillis()).build();
             mempool.add(tx);
-            ctx.json(Map.of("status", "accepted", "message", "Withdraw submitted to mempool"));
+            ctx.json(Map.of("status", "accepted", "message", "Signed withdrawal submitted to mempool"));
+        });
+
+        api.get("/api/bridge/balance", ctx -> {
+            String userId = ctx.queryParam("userId");
+            if (userId == null) {
+                ctx.status(HttpStatus.BAD_REQUEST);
+                ctx.json(Map.of("status", "error", "message", "userId query parameter required"));
+                return;
+            }
+            double l1Balance = bridge.getL1Balance(userId);
+            var l2Balance = marginManager.getBalance(userId);
+            ctx.json(Map.of(
+                    "userId", userId,
+                    "l1Balance", l1Balance,
+                    "l2FreeBalance", l2Balance != null ? l2Balance.getFreeBalance() : 0.0,
+                    "l2LockedMargin", l2Balance != null ? l2Balance.getLockedMargin() : 0.0
+            ));
         });
 
         api.post("/api/order", ctx -> {

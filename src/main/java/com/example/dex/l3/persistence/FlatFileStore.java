@@ -62,9 +62,24 @@ public class FlatFileStore {
         snapshot.put("oraclePrices", oracleService.getAllPrices());
         snapshot.put("orderBooks", buildOrderBooksList(handler));
         snapshot.put("trades", buildTradesList(handler));
+        snapshot.put("processedBridgeTicketIds", List.copyOf(handler.getProcessedBridgeTxIds()));
+        snapshot.put("pendingWithdrawals", buildPendingWithdrawalsList(handler));
 
         String json = MAPPER.writeValueAsString(snapshot);
         Files.writeString(snapshotFile, json, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
+    }
+
+    private List<Map<String, Object>> buildPendingWithdrawalsList(StateExecutionHandler handler) {
+        List<Map<String, Object>> list = new ArrayList<>();
+        for (var pw : handler.getPendingWithdrawals()) {
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("requestId", pw.requestId);
+            m.put("userId", pw.userId);
+            m.put("amount", pw.amount);
+            m.put("timestamp", pw.timestamp);
+            list.add(m);
+        }
+        return list;
     }
 
     public SnapshotData loadSnapshot() throws IOException {
@@ -233,6 +248,8 @@ public class FlatFileStore {
         public final Map<String, Double> oraclePrices;
         public final List<OrderBookEntry> orderBooks;
         public final List<TradeEntry> trades;
+        public final java.util.Set<String> processedBridgeTicketIds;
+        public final List<PendingWithdrawalEntry> pendingWithdrawals;
 
         @SuppressWarnings("unchecked")
         SnapshotData(Map<String, Object> data) {
@@ -263,6 +280,14 @@ public class FlatFileStore {
             this.trades = new ArrayList<>();
             for (Map<String, Object> t : (List<Map<String, Object>>) data.getOrDefault("trades", List.of())) {
                 trades.add(new TradeEntry(t));
+            }
+
+            List<String> rawTickets = (List<String>) data.getOrDefault("processedBridgeTicketIds", List.of());
+            this.processedBridgeTicketIds = new java.util.HashSet<>(rawTickets);
+
+            this.pendingWithdrawals = new ArrayList<>();
+            for (Map<String, Object> pw : (List<Map<String, Object>>) data.getOrDefault("pendingWithdrawals", List.of())) {
+                pendingWithdrawals.add(new PendingWithdrawalEntry(pw));
             }
         }
 
@@ -429,6 +454,18 @@ public class FlatFileStore {
                 this.sellerLeverage = ((Number) m.get("sellerLeverage")).doubleValue();
                 this.buyerIsolated = (boolean) m.get("buyerIsolated");
                 this.sellerIsolated = (boolean) m.get("sellerIsolated");
+                this.timestamp = ((Number) m.get("timestamp")).longValue();
+            }
+        }
+
+        public static class PendingWithdrawalEntry {
+            public final String requestId, userId;
+            public final double amount;
+            public final long timestamp;
+            PendingWithdrawalEntry(Map<String, Object> m) {
+                this.requestId = (String) m.get("requestId");
+                this.userId = (String) m.get("userId");
+                this.amount = ((Number) m.get("amount")).doubleValue();
                 this.timestamp = ((Number) m.get("timestamp")).longValue();
             }
         }

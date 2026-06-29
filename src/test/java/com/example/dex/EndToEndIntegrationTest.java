@@ -1,5 +1,6 @@
 package com.example.dex;
 
+import com.example.dex.bridge.ArbitrumBridge;
 import com.example.dex.bridge.L1Vault;
 import com.example.dex.bridge.L2Bridge;
 import com.example.dex.cryptography.DexSignatureUtil;
@@ -176,7 +177,9 @@ public class EndToEndIntegrationTest {
         bridge.syncDeposits();
         Thread.sleep(150);
 
-        RollupPublisher publisher = new RollupPublisher(engine.handler, vault);
+        ArbitrumBridge arbBridge = new ArbitrumBridge(30_000);
+        arbBridge.start();
+        RollupPublisher publisher = new RollupPublisher(engine.handler, arbBridge);
 
         String bobMsg = "PLACE_ORDER:sell:" + bobAddr + ":" + marketId + ":60000:1.0";
         String bobSig = DexSignatureUtil.sign(bobMsg, bobKeys.getPrivate());
@@ -201,13 +204,44 @@ public class EndToEndIntegrationTest {
         boolean published = publisher.publishNextBatch();
         assertTrue(published, "Батч роллапа должен быть успешно опубликован");
 
-        List<RollupBatch> batches = vault.getRollupBatches();
-        assertEquals(1, batches.size(), "На расчетном слое должен присутствовать 1 опубликованный батч");
+        List<RollupBatch> batches = arbBridge.getRollupBatches();
+        assertEquals(1, batches.size(), "В ArbitrumBridge должен быть 1 опубликованный батч");
         RollupBatch batch = batches.get(0);
         assertEquals(1, batch.getBatchId());
         assertEquals(1, batch.getTrades().size());
         assertNotNull(batch.getStateRoot());
         assertNotEquals(batch.getPrevStateRoot(), batch.getStateRoot());
+    }
+
+    @Test
+    public void testBridgeDepositEndToEnd() throws Exception {
+        ArbitrumBridge arbBridge = new ArbitrumBridge(30000, 100, 50000, 100);
+        arbBridge.depositL1("alice-bridged", 5000.0);
+        arbBridge.start();
+
+        if (engine.marginManager.getBalance("alice-bridged") == null) {
+            engine.marginManager.registerUser("alice-bridged", 0.0);
+        }
+
+        arbBridge.createRetryableTicket("alice-bridged", 2000.0);
+
+        Thread.sleep(500);
+
+        List<ChainTransaction> deposits = arbBridge.drainOutbox();
+        assertFalse(deposits.isEmpty(), "Должен быть минимум 1 DEPOSIT в outbox");
+
+        for (ChainTransaction tx : deposits) {
+            long seq = engine.ringBuffer.next();
+            engine.ringBuffer.get(seq).setTransaction(tx);
+            engine.ringBuffer.publish(seq);
+        }
+        Thread.sleep(100);
+
+        AccountBalance bal = engine.marginManager.getBalance("alice-bridged");
+        assertNotNull(bal);
+        assertEquals(2000.0, bal.getFreeBalance(), 1e-6);
+
+        arbBridge.stop();
     }
 
     private void sendTransaction(ChainTransaction tx) {

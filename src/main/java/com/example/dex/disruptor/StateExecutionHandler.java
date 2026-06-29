@@ -1,5 +1,6 @@
 package com.example.dex.disruptor;
 
+import com.example.dex.cryptography.DexSignatureUtil;
 import com.example.dex.funding.FundingCalculator;
 import com.example.dex.margin.LiquidationEngine;
 import com.example.dex.margin.MarginManager;
@@ -9,9 +10,8 @@ import com.example.dex.models.Order;
 import com.example.dex.models.Trade;
 import com.lmax.disruptor.EventHandler;
 
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.security.PublicKey;
+import java.util.*;
 
 /**
  * Детерминированный обработчик команд (Execution Engine) для репликации состояния.
@@ -19,11 +19,27 @@ import java.util.Map;
  */
 public class StateExecutionHandler implements EventHandler<ChainTxEvent> {
 
+    public static final class PendingWithdrawal {
+        public final String requestId;
+        public final String userId;
+        public final double amount;
+        public final long timestamp;
+
+        public PendingWithdrawal(String requestId, String userId, double amount, long timestamp) {
+            this.requestId = requestId;
+            this.userId = userId;
+            this.amount = amount;
+            this.timestamp = timestamp;
+        }
+    }
+
     private final Map<String, OrderBook> orderBooks = new HashMap<>();
     private final MarginManager marginManager;
     private final LiquidationEngine liquidationEngine;
     private final FundingCalculator fundingCalculator;
     private final java.util.List<Trade> executedTrades = java.util.Collections.synchronizedList(new java.util.ArrayList<>());
+    private final java.util.Set<String> processedBridgeTxIds = java.util.Collections.synchronizedSet(new java.util.HashSet<>());
+    private final java.util.List<PendingWithdrawal> pendingWithdrawals = java.util.Collections.synchronizedList(new java.util.ArrayList<>());
 
     public StateExecutionHandler(MarginManager marginManager, LiquidationEngine liquidationEngine, FundingCalculator fundingCalculator) {
         this.marginManager = marginManager;
@@ -33,6 +49,18 @@ public class StateExecutionHandler implements EventHandler<ChainTxEvent> {
 
     public List<Trade> getExecutedTrades() {
         return executedTrades;
+    }
+
+    public java.util.Set<String> getProcessedBridgeTxIds() {
+        return processedBridgeTxIds;
+    }
+
+    public List<PendingWithdrawal> getPendingWithdrawals() {
+        return List.copyOf(pendingWithdrawals);
+    }
+
+    public void removePendingWithdrawal(PendingWithdrawal pw) {
+        pendingWithdrawals.remove(pw);
     }
 
     public void registerMarket(String marketId) {
@@ -57,12 +85,21 @@ public class StateExecutionHandler implements EventHandler<ChainTxEvent> {
         try {
             switch (tx.getType()) {
                 case DEPOSIT:
+                    // Dedup для bridge-депозитов (orderId = ticketId)
+                    if (tx.getOrderId() != null && !tx.getOrderId().isBlank()) {
+                        if (!processedBridgeTxIds.add(tx.getOrderId())) {
+                            break;
+                        }
+                    }
                     marginManager.deposit(tx.getUserId(), tx.getAmount());
                     break;
 
                 case WITHDRAW:
-                    // Проверка баланса и вывод
                     marginManager.withdraw(tx.getUserId(), tx.getAmount());
+                    break;
+
+                case WITHDRAW_SIGNED:
+                    handleWithdrawSigned(tx);
                     break;
 
                 case PLACE_ORDER:
@@ -98,16 +135,13 @@ public class StateExecutionHandler implements EventHandler<ChainTxEvent> {
                     break;
 
                 case UPDATE_ORACLE:
-                    // Обновляем оракул детерминировано
                     marginManager.getOracleService().setPrice(tx.getMarketId(), tx.getPrice());
 
-                    // Запускаем детерминированную ликвидацию
                     var marketSpec = marginManager.getMarketSpec(tx.getMarketId());
                     if (marketSpec != null) {
                         List<String> activeUsers = List.copyOf(marginManager.getAllRegisteredUsers());
                         liquidationEngine.checkLiquidations(tx.getMarketId(), marketSpec, activeUsers);
 
-                        // Запускаем детерминированный фандинг
                         OrderBook obForFunding = orderBooks.get(tx.getMarketId());
                         if (obForFunding != null) {
                             fundingCalculator.applyFundingDeterministically(
@@ -126,6 +160,34 @@ public class StateExecutionHandler implements EventHandler<ChainTxEvent> {
             e.printStackTrace();
         } finally {
             event.clear();
+        }
+    }
+
+    private void handleWithdrawSigned(ChainTransaction tx) {
+        String userId = tx.getUserId();
+        double amount = tx.getAmount();
+        long timestamp = tx.getTimestamp();
+
+        // Верифицируем RSA-подпись пользователя
+        String message = userId + ":" + amount + ":" + timestamp;
+        try {
+            PublicKey pubKey = DexSignatureUtil.decodePublicKey(userId);
+            if (!DexSignatureUtil.verify(message, tx.getSignature(), pubKey)) {
+                System.out.println("[REJECT] WITHDRAW_SIGNED: неверная подпись для " + userId);
+                return;
+            }
+        } catch (Exception e) {
+            System.out.println("[REJECT] WITHDRAW_SIGNED: ошибка верификации для " + userId + ": " + e.getMessage());
+            return;
+        }
+
+        boolean ok = marginManager.withdraw(userId, amount);
+        if (ok) {
+            String requestId = "l2-withdraw-" + java.util.UUID.randomUUID().toString().substring(0, 8);
+            pendingWithdrawals.add(new PendingWithdrawal(requestId, userId, amount, timestamp));
+            System.out.println("[ACCEPT] WITHDRAW_SIGNED " + userId + " amount=" + amount + " → pending L1 finalization");
+        } else {
+            System.out.println("[REJECT] WITHDRAW_SIGNED: недостаточно средств для " + userId);
         }
     }
 }

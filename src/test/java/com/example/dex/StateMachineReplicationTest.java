@@ -1,5 +1,6 @@
 package com.example.dex;
 
+import com.example.dex.cryptography.DexSignatureUtil;
 import com.example.dex.disruptor.ChainTxEvent;
 import com.example.dex.disruptor.ChainTxEventFactory;
 import com.example.dex.disruptor.StateExecutionHandler;
@@ -21,12 +22,12 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.security.KeyPair;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.*;
 
 public class StateMachineReplicationTest {
 
@@ -222,5 +223,85 @@ public class StateMachineReplicationTest {
         assertEquals(bookA.getAsks().size(), bookC.getAsks().size());
         
         System.out.println("SMR DETECTED SUCCESS: All replicas have exactly identical end state!");
+    }
+
+    @Test
+    public void testBridgeDepositDedup() throws Exception {
+        ChainTransaction tx1 = new ChainTransaction.Builder(ChainTransaction.TxType.DEPOSIT)
+                .userId("alice").amount(500.0).orderId("ticket-1")
+                .timestamp(System.currentTimeMillis()).build();
+        ChainTransaction tx2 = new ChainTransaction.Builder(ChainTransaction.TxType.DEPOSIT)
+                .userId("alice").amount(500.0).orderId("ticket-1")
+                .timestamp(System.currentTimeMillis()).build();
+
+        nodeA.sendTransaction(tx1);
+        Thread.sleep(50);
+        assertEquals(500.0, nodeA.marginManager.getBalance("alice").getFreeBalance(), 1e-6);
+        assertTrue(nodeA.handler.getProcessedBridgeTxIds().contains("ticket-1"));
+
+        nodeA.sendTransaction(tx2);
+        Thread.sleep(50);
+        assertEquals(500.0, nodeA.marginManager.getBalance("alice").getFreeBalance(), 1e-6);
+    }
+
+    @Test
+    public void testSignedWithdrawalValid() throws Exception {
+        KeyPair keys = DexSignatureUtil.generateKeyPair();
+        String userId = DexSignatureUtil.encodePublicKey(keys.getPublic());
+
+        nodeA.sendTransaction(new ChainTransaction.Builder(ChainTransaction.TxType.DEPOSIT)
+                .userId(userId).amount(1000.0).timestamp(System.currentTimeMillis()).build());
+        Thread.sleep(50);
+
+        long ts = System.currentTimeMillis();
+        String msg = userId + ":" + 200.0 + ":" + ts;
+        String sig = DexSignatureUtil.sign(msg, keys.getPrivate());
+
+        nodeA.sendTransaction(new ChainTransaction.Builder(ChainTransaction.TxType.WITHDRAW_SIGNED)
+                .userId(userId).amount(200.0).signature(sig).timestamp(ts).build());
+        Thread.sleep(50);
+
+        assertEquals(800.0, nodeA.marginManager.getBalance(userId).getFreeBalance(), 1e-6);
+        assertEquals(1, nodeA.handler.getPendingWithdrawals().size());
+        assertEquals(userId, nodeA.handler.getPendingWithdrawals().get(0).userId);
+        assertEquals(200.0, nodeA.handler.getPendingWithdrawals().get(0).amount, 1e-6);
+    }
+
+    @Test
+    public void testSignedWithdrawalInvalidSignature() throws Exception {
+        // Register alice with deposit first
+        nodeA.sendTransaction(new ChainTransaction.Builder(ChainTransaction.TxType.DEPOSIT)
+                .userId("alice").amount(10000.0).timestamp(System.currentTimeMillis()).build());
+        Thread.sleep(50);
+
+        long ts = System.currentTimeMillis();
+        ChainTransaction wd = new ChainTransaction.Builder(ChainTransaction.TxType.WITHDRAW_SIGNED)
+                .userId("alice").amount(100.0).signature("fake-sig").timestamp(ts).build();
+        nodeA.sendTransaction(wd);
+        Thread.sleep(50);
+
+        assertEquals(10000.0, nodeA.marginManager.getBalance("alice").getFreeBalance(), 1e-6);
+        assertTrue(nodeA.handler.getPendingWithdrawals().isEmpty());
+    }
+
+    @Test
+    public void testSignedWithdrawalInsufficientFunds() throws Exception {
+        KeyPair keys = DexSignatureUtil.generateKeyPair();
+        String userId = DexSignatureUtil.encodePublicKey(keys.getPublic());
+
+        nodeA.sendTransaction(new ChainTransaction.Builder(ChainTransaction.TxType.DEPOSIT)
+                .userId(userId).amount(100.0).timestamp(System.currentTimeMillis()).build());
+        Thread.sleep(50);
+
+        long ts = System.currentTimeMillis();
+        String msg = userId + ":999.0:" + ts;
+        String sig = DexSignatureUtil.sign(msg, keys.getPrivate());
+
+        nodeA.sendTransaction(new ChainTransaction.Builder(ChainTransaction.TxType.WITHDRAW_SIGNED)
+                .userId(userId).amount(999.0).signature(sig).timestamp(ts).build());
+        Thread.sleep(50);
+
+        assertEquals(100.0, nodeA.marginManager.getBalance(userId).getFreeBalance(), 1e-6);
+        assertTrue(nodeA.handler.getPendingWithdrawals().isEmpty());
     }
 }
