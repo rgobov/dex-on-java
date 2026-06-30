@@ -1,0 +1,424 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Архитектура DEX — схемы</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-app: #080b11;
+            --bg-panel: rgba(13,18,29,.85);
+            --bg-card: rgba(20,27,43,.6);
+            --border: rgba(63,74,96,.3);
+            --text: #e2e8f0;
+            --text-dim: #94a3b8;
+            --green: #00ff88;
+            --red: #ff3b30;
+            --blue: #0070f3;
+            --cyan: #00d2ff;
+            --purple: #a020f0;
+            --amber: #ffb000;
+        }
+        * { margin:0; padding:0; box-sizing:border-box; }
+        body {
+            background:var(--bg-app); color:var(--text);
+            font-family:'Outfit',sans-serif; min-height:100vh;
+            padding:1.5rem;
+        }
+        h1 {
+            font-size:1.5rem; font-weight:700;
+            letter-spacing:.1em; margin-bottom:.3rem;
+        }
+        .subtitle { color:var(--text-dim); font-size:.85rem; margin-bottom:1.5rem; }
+        .tabs {
+            display:flex; gap:0; margin-bottom:1.5rem;
+            background:var(--bg-panel); border-radius:12px;
+            padding:.25rem; border:1px solid var(--border);
+            flex-wrap:wrap;
+        }
+        .tab-btn {
+            flex:1; min-width:100px;
+            padding:.6rem .8rem; border:none; border-radius:8px;
+            background:transparent; color:var(--text-dim);
+            font-weight:600; font-size:.8rem; cursor:pointer;
+            transition:all .15s; text-align:center;
+            letter-spacing:.02em;
+        }
+        .tab-btn:hover { color:var(--text); background:rgba(255,255,255,.03); }
+        .tab-btn.active {
+            background:linear-gradient(135deg,var(--cyan),var(--blue));
+            color:#fff; box-shadow:0 2px 12px rgba(0,210,255,.25);
+        }
+        .panel {
+            background:var(--bg-panel); border:1px solid var(--border);
+            border-radius:16px; padding:1.25rem;
+            backdrop-filter:blur(12px);
+            display:none;
+        }
+        .panel.active { display:block; }
+        .panel-title {
+            font-size:.85rem; font-weight:600; color:var(--text-dim);
+            text-transform:uppercase; letter-spacing:.08em;
+            margin-bottom:.75rem; padding-bottom:.5rem;
+            border-bottom:1px solid rgba(255,255,255,.04);
+        }
+        .mermaid-container {
+            background:#060a12; border-radius:10px;
+            border:1px solid rgba(255,255,255,.03); padding:.5rem;
+            overflow-x:auto; margin-bottom:1rem;
+        }
+        .mermaid-container svg { max-width:100%; height:auto; }
+        .legend {
+            display:flex; gap:1rem; flex-wrap:wrap;
+            margin-bottom:1.5rem;
+            background:var(--bg-card); border-radius:10px;
+            padding:.7rem 1rem; border:1px solid var(--border);
+        }
+        .legend-item { display:flex; align-items:center; gap:.4rem; font-size:.75rem; color:var(--text-dim); }
+        .legend-dot {
+            width:12px; height:12px; border-radius:3px; display:inline-block;
+        }
+        .legend-dot.l1 { background:var(--amber); }
+        .legend-dot.l2 { background:var(--purple); }
+        .legend-dot.l3 { background:var(--cyan); }
+        .legend-dot.user { background:var(--text); }
+        .legend-dot.error { background:var(--red); }
+        .legend-dot.ok { background:var(--green); }
+        .desc {
+            font-size:.85rem; color:var(--text-dim); line-height:1.6;
+            margin-bottom:1rem; padding:.8rem; border-radius:8px;
+            background:rgba(0,0,0,.2); border-left:3px solid var(--cyan);
+        }
+        .desc strong { color:var(--text); }
+        .footer {
+            margin-top:2rem; text-align:center;
+            font-size:.7rem; color:var(--text-dim);
+            border-top:1px solid var(--border); padding-top:1rem;
+        }
+        .note {
+            display:inline-block; padding:.15rem .5rem; border-radius:4px;
+            font-size:.7rem; font-weight:600; font-family:'JetBrains Mono',monospace;
+        }
+        .note.cyan { background:rgba(0,210,255,.12); color:var(--cyan); }
+        .note.purple { background:rgba(160,32,240,.12); color:var(--purple); }
+        .note.amber { background:rgba(255,176,0,.12); color:var(--amber); }
+        .note.green { background:rgba(0,255,136,.12); color:var(--green); }
+        .note.red { background:rgba(255,59,48,.12); color:var(--red); }
+    </style>
+</head>
+<body>
+
+<h1>▲ ANTIGRAVITY DEX</h1>
+<div class="subtitle">Схемы прохождения транзакций через L1 (Arbitrum) → L2 (PBFT) → L3 (Disruptor/Execution)</div>
+
+<div class="legend">
+    <span class="legend-item"><span class="legend-dot user"></span> Пользователь / Кошелёк</span>
+    <span class="legend-item"><span class="legend-dot l3"></span> L3 — Disruptor / StateExecutionHandler</span>
+    <span class="legend-item"><span class="legend-dot l2"></span> L2 — PBFT консенсус (3 валидатора)</span>
+    <span class="legend-item"><span class="legend-dot l1"></span> L1 — Arbitrum Bridge (расчёты)</span>
+    <span class="legend-item"><span class="legend-dot ok"></span> Успешная операция</span>
+    <span class="legend-item"><span class="legend-dot error"></span> Отклонено / Ликвидировано</span>
+</div>
+
+<div class="tabs" id="tabBar">
+    <button class="tab-btn active" data-tab="deposit">1. Депозит</button>
+    <button class="tab-btn" data-tab="order">2. Сделка</button>
+    <button class="tab-btn" data-tab="oracle">3. Маржа / Ликвидация</button>
+    <button class="tab-btn" data-tab="close">4. Закрытие</button>
+    <button class="tab-btn" data-tab="withdraw">5. Вывод</button>
+</div>
+
+<!-- ========== 1. DEPOSIT ========== -->
+<div class="panel active" id="panel-deposit">
+    <div class="panel-title">1. Внесение средств <span class="note amber">L1 → L2</span></div>
+    <div class="desc">
+        Ты отправляешь USDC на bridge-контракт Arbitrum (L1). Валидаторы через Poller подхватывают 
+        выкупленный тикет и проводят через консенсус. После коммита — бухгалтер зачисляет на L2 счёт.
+    </div>
+    <div class="mermaid-container">
+<pre class="mermaid" style="text-align:center;">
+flowchart TD
+    A["👤 Ты (кошелёк L1)"] -->|"POST /api/deposit<br/>{userId, amount}"| B["Валидатор (REST API)"]
+    B -->|"depositL1()<br/>createRetryableTicket()"| C["ArbitrumBridge<br/><span class='note amber'>L1</span>"]
+    C -->|"ждёт ticketRedeemDelay<br/>(~2s симуляция)"| D["processTickets()<br/>→ auto-redeem"]
+    D -->|"tx DEPOSIT → outbox"| E["outbox[]"]
+    E -->|"ArbitrumBridgePoller<br/>(каждую 1с)"| F["Mempool"]
+    F -->|"PBFT: PrePrepare→Prepare→Commit<br/><span class='note purple'>2/3 валидаторов</span>"| G["StateExecutionHandler<br/><span class='note cyan'>L3 Disruptor</span>"]
+    G -->|"dedup по ticketId"| H{"Уже обработан?"}
+    H -->|"да"| I["⛔ SKIP"]
+    H -->|"нет"| J["marginManager.deposit()<br/>freeBalance += amount"]
+    J --> K["✅ Баланс L2: +500 USDC"]
+
+    style A fill:#e2e8f0,stroke:#94a3b8,color:#000
+    style B fill:#1e293b,stroke:#3f4a60,color:#e2e8f0
+    style C fill:#1a1200,stroke:#ffb000,color:#ffb000
+    style D fill:#1a1200,stroke:#ffb000,color:#ffb000
+    style E fill:#1a1200,stroke:#ffb000,color:#ffb000
+    style F fill:#1a0020,stroke:#a020f0,color:#a020f0
+    style G fill:#001520,stroke:#00d2ff,color:#00d2ff
+    style H fill:#1e293b,stroke:#3f4a60,color:#e2e8f0
+    style I fill:#2a0000,stroke:#ff3b30,color:#ff3b30
+    style J fill:#002010,stroke:#00ff88,color:#00ff88
+    style K fill:#002010,stroke:#00ff88,color:#00ff88
+</pre>
+    </div>
+</div>
+
+<!-- ========== 2. ORDER ========== -->
+<div class="panel" id="panel-order">
+    <div class="panel-title">2. Открытие позиции <span class="note cyan">L3 — исполнение</span></div>
+    <div class="desc">
+        Ты ставишь лимитный ордер. Валидаторы голосуют, Disruptor проверяет маржу, 
+        OrderBook ищет встречную заявку. При совпадении — сделка, бухгалтер создаёт позицию.
+    </div>
+    <div class="mermaid-container">
+<pre class="mermaid" style="text-align:center;">
+flowchart TD
+    A["👤 Ты"] -->|"POST /api/order<br/>{isBuy, price, amount, leverage}"| B["Mempool"]
+
+    B -->|"PBFT consensus<br/><span class='note purple'>2/3 vote</span>"| C["StateExecutionHandler<br/><span class='note cyan'>L3 Disruptor</span>"]
+
+    C -->|"tx.toOrder()"| D{"checkAndLockMargin()<br/>freeBalance ≥ margin?"}
+
+    D -->|"❌ Нет"| E["⛔ ORDER REJECTED<br/>Insufficient funds"]
+    D -->|"✅ Да"| F["freeBalance -= margin<br/>lockedMargin += margin"]
+
+    F --> G["OrderBook.processOrder()<br/><span class='note dim'>price-time priority</span>"]
+
+    G --> H{"Есть встречная заявка<br/>по crossing price?"}
+
+    H -->|"❌ Нет"| I["Заявка висит в стакане<br/>ждёт встречного ордера"]
+
+    H -->|"✅ Да"| J["MATCH → Trade[]<br/>{buyer, seller, price, qty}"]
+
+    J --> K["marginManager.processTrade()<br/>→ комиссии"]
+    K --> L["updatePositionAfterTrade()<br/>создать/увеличить позицию"]
+
+    L --> M["✅ Позиция открыта<br/>Size, EntryPrice, Margin, Leverage"]
+
+    click E href "#insufficient"
+    click I href "#pending"
+
+    style A fill:#e2e8f0,stroke:#94a3b8,color:#000
+    style B fill:#1a0020,stroke:#a020f0,color:#a020f0
+    style C fill:#001520,stroke:#00d2ff,color:#00d2ff
+    style D fill:#1e293b,stroke:#3f4a60,color:#e2e8f0
+    style E fill:#2a0000,stroke:#ff3b30,color:#ff3b30
+    style F fill:#001010,stroke:#00d2ff,color:#00d2ff
+    style G fill:#0d121d,stroke:#3f4a60,color:#e2e8f0
+    style H fill:#1e293b,stroke:#3f4a60,color:#e2e8f0
+    style I fill:#1a1a00,stroke:#ffb000,color:#ffb000
+    style J fill:#002010,stroke:#00ff88,color:#00ff88
+    style K fill:#002010,stroke:#00ff88,color:#00ff88
+    style L fill:#002010,stroke:#00ff88,color:#00ff88
+    style M fill:#002010,stroke:#00ff88,color:#00ff88
+</pre>
+    </div>
+</div>
+
+<!-- ========== 3. ORACLE / LIQUIDATION ========== -->
+<div class="panel" id="panel-oracle">
+    <div class="panel-title">3. Маржа-контроль и ликвидация <span class="note red">каждое обновление цены</span></div>
+    <div class="desc">
+        Каждый раз, когда оракул даёт новую цену — валидаторы проводят UPDATE_ORACLE через
+        консенсус. Disruptor пересчитывает ликвидационные цены для <strong>каждой</strong> открытой позиции.
+        Если маржа ниже порога — принудительное закрытие.
+    </div>
+    <div class="mermaid-container">
+<pre class="mermaid" style="text-align:center;">
+flowchart TD
+    A["📡 Oracle Price Feed"] -->|"UPDATE_ORACLE tx"| B["PBFT → Commit"]
+
+    B --> C["StateExecutionHandler<br/><span class='note cyan'>L3 Disruptor</span>"]
+
+    C --> D["OracleService.setPrice(marketId, price)"]
+
+    D --> E["LiquidationEngine<br/>.checkLiquidations(marketId)"]
+
+    E --> F["Для каждого пользователя<br/>с позицией в этом marketId"]
+
+    F --> G{"Режим маржи?"}
+
+    G -->|"Изолированная"| H["Расчёт: liquidationPrice =<br/>entryPrice ± (margin / size / maint%)"]
+    G -->|"Кросс"| I["Расчёт: totalEquity =<br/>freeBalance + Σ(margin + unrealizedPnL)"]
+
+    H --> J{"Цена пересекла<br/>liquidationPrice?"}
+    J -->|"❌ Нет"| K["✅ Позиция в безопасности"]
+    J -->|"✅ Да"| L["🔴 Forfeit margin → close position<br/>Убыток = вся маржа"]
+
+    I --> M{"Equity < Σ(size×price×maint%) ?"}
+    M -->|"❌ Нет"| N["✅ Портфель в порядке"]
+    M -->|"✅ Да"| O["🔴 Liquidate ALL cross positions<br/>Все маржи сгорают, freeBalance = 0"]
+
+    L --> P["FundingCalculator<br/>.applyFunding()<br/>(платежи long→short)"]
+    O --> P
+
+    style A fill:#1a1a00,stroke:#ffb000,color:#ffb000
+    style B fill:#1a0020,stroke:#a020f0,color:#a020f0
+    style C fill:#001520,stroke:#00d2ff,color:#00d2ff
+    style D fill:#0d121d,stroke:#3f4a60,color:#e2e8f0
+    style E fill:#2a0000,stroke:#ff3b30,color:#ff3b30
+    style F fill:#0d121d,stroke:#3f4a60,color:#e2e8f0
+    style G fill:#1e293b,stroke:#3f4a60,color:#e2e8f0
+    style H fill:#001010,stroke:#00d2ff,color:#00d2ff
+    style I fill:#001010,stroke:#00d2ff,color:#00d2ff
+    style J fill:#1e293b,stroke:#3f4a60,color:#e2e8f0
+    style K fill:#002010,stroke:#00ff88,color:#00ff88
+    style L fill:#2a0000,stroke:#ff3b30,color:#ff3b30
+    style M fill:#1e293b,stroke:#3f4a60,color:#e2e8f0
+    style N fill:#002010,stroke:#00ff88,color:#00ff88
+    style O fill:#2a0000,stroke:#ff3b30,color:#ff3b30
+    style P fill:#1a0020,stroke:#a020f0,color:#a020f0
+</pre>
+    </div>
+</div>
+
+<!-- ========== 4. CLOSE ========== -->
+<div class="panel" id="panel-close">
+    <div class="panel-title">4. Закрытие позиции <span class="note cyan">L3 — PnL realisation</span></div>
+    <div class="desc">
+        Чтобы закрыть позицию — ставишь встречный ордер. Disruptor проверяет: если ордер 
+        <em>уменьшает</em> существующую позицию — новая маржа не нужна. OrderBook ищет ликвидность,
+        после сделки бухгалтер закрывает позицию и размораживает剩余 маржу.
+    </div>
+    <div class="mermaid-container">
+<pre class="mermaid" style="text-align:center;">
+flowchart TD
+    A["👤 Ты"] -->|"POST /api/order<br/>(противоположная сторона)"| B["Mempool → PBFT"]
+
+    B --> C["StateExecutionHandler<br/><span class='note cyan'>L3 Disruptor</span>"]
+
+    C --> D["checkAndLockMargin()<br/><span class='note green'>0 — reducing position<br/>(новая маржа не нужна)</span>"]
+
+    D --> E["OrderBook.processOrder()<br/>→ match по рынку/лимиту"]
+
+    E --> F["Trade[] исполнена"]
+
+    F --> G["updatePositionAfterTrade()"]
+
+    G --> H{"Что делает сделка<br/>с существующей позицией?"}
+
+    H -->|"Частичное закрытие"| I["PnL = (exitPrice − entryPrice) × qty<br/>+ Прибыль → freeBalance<br/>+ Пропорциональная маржа разморожена"]
+    H -->|"Полное закрытие"| J["Весь PnL реализован<br/>Вся маржа разморожена<br/>Позиция = 0"]
+    H -->|"Переворот (over-close)"| K["Закрыть старую позицию<br/>Открыть новую в opposite direction<br/>с остаточным объёмом"]
+
+    I --> L["✅ Позиция закрыта / уменьшена"]
+    J --> L
+    K --> L
+
+    style A fill:#e2e8f0,stroke:#94a3b8,color:#000
+    style B fill:#1a0020,stroke:#a020f0,color:#a020f0
+    style C fill:#001520,stroke:#00d2ff,color:#00d2ff
+    style D fill:#002010,stroke:#00ff88,color:#00ff88
+    style E fill:#0d121d,stroke:#3f4a60,color:#e2e8f0
+    style F fill:#002010,stroke:#00ff88,color:#00ff88
+    style G fill:#001010,stroke:#00d2ff,color:#00d2ff
+    style H fill:#1e293b,stroke:#3f4a60,color:#e2e8f0
+    style I fill:#002010,stroke:#00ff88,color:#00ff88
+    style J fill:#002010,stroke:#00ff88,color:#00ff88
+    style K fill:#1a1a00,stroke:#ffb000,color:#ffb000
+    style L fill:#002010,stroke:#00ff88,color:#00ff88
+</pre>
+    </div>
+</div>
+
+<!-- ========== 5. WITHDRAW ========== -->
+<div class="panel" id="panel-withdraw">
+    <div class="panel-title">5. Вывод средств <span class="note amber">L2 → L1</span></div>
+    <div class="desc">
+        Ты подписываешь запрос RSA-ключом. Валидаторы проверяют подпись и баланс через консенсус.
+        После коммита — средства списываются с L2 и ставятся в очередь PendingWithdrawal.
+        Финалайзер отправляет запрос в ArbitrumBridge. Через challenge window (7 дней / 30с) — деньги на L1.
+    </div>
+    <div class="mermaid-container">
+<pre class="mermaid" style="text-align:center;">
+flowchart TD
+    A["👤 Ты"] -->|"POST /api/withdraw<br/>{userId, amount, RSA-signature}"| B["Mempool → PBFT"]
+
+    B --> C["StateExecutionHandler<br/><span class='note cyan'>L3 Disruptor</span>"]
+
+    C --> D["verify RSA signature<br/>DexSignatureUtil.verify()"]
+
+    D --> E{"Подпись валидна?"}
+    E -->|"❌ Нет"| F["⛔ WITHDRAW REJECTED<br/>Invalid signature"]
+    E -->|"✅ Да"| G["marginManager.withdraw()"]
+
+    G --> H{"freeBalance ≥ amount?"}
+    H -->|"❌ Нет"| I["⛔ WITHDRAW REJECTED<br/>Insufficient funds"]
+    H -->|"✅ Да"| J["freeBalance -= amount<br/>→ PendingWithdrawal[]"]
+
+    J --> K["WithdrawalFinalizer<br/>(каждые 3с)"]
+    K -->|"bridge.initiateWithdrawal()"| L["ArbitrumBridge<br/>→ WithdrawalRequest"]
+
+    L --> M["ждёт challengeWindow<br/><span class='note amber'>~7 дней (30с в dev)</span>"]
+
+    M --> N{"Кто-то<br/>зачелленджил?"}
+    N -->|"✅ Да challengeWithdrawal()"| O["⛔ WITHDRAW REJECTED<br/>Challenged — средства заблокированы"]
+    N -->|"❌ Нет"| P["bridge.finalizeWithdrawals()<br/>L1 balance += amount"]
+
+    P --> Q["✅ USDC на L1 кошельке"]
+
+    style A fill:#e2e8f0,stroke:#94a3b8,color:#000
+    style B fill:#1a0020,stroke:#a020f0,color:#a020f0
+    style C fill:#001520,stroke:#00d2ff,color:#00d2ff
+    style D fill:#0d121d,stroke:#3f4a60,color:#e2e8f0
+    style E fill:#1e293b,stroke:#3f4a60,color:#e2e8f0
+    style F fill:#2a0000,stroke:#ff3b30,color:#ff3b30
+    style G fill:#001010,stroke:#00d2ff,color:#00d2ff
+    style H fill:#1e293b,stroke:#3f4a60,color:#e2e8f0
+    style I fill:#2a0000,stroke:#ff3b30,color:#ff3b30
+    style J fill:#002010,stroke:#00ff88,color:#00ff88
+    style K fill:#1a0020,stroke:#a020f0,color:#a020f0
+    style L fill:#1a1200,stroke:#ffb000,color:#ffb000
+    style M fill:#1a1200,stroke:#ffb000,color:#ffb000
+    style N fill:#1e293b,stroke:#3f4a60,color:#e2e8f0
+    style O fill:#2a0000,stroke:#ff3b30,color:#ff3b30
+    style P fill:#1a1200,stroke:#ffb000,color:#ffb000
+    style Q fill:#002010,stroke:#00ff88,color:#00ff88
+</pre>
+    </div>
+</div>
+
+<div class="footer">
+    Antigravity DEX — <a href="index.html" style="color:var(--cyan);text-decoration:none;">Дашборд</a> —
+    <span style="color:var(--text-dim);">Сборка: mvn compile</span>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+<script>
+    mermaid.initialize({
+        startOnLoad: true,
+        theme: 'base',
+        themeVariables: {
+            background: '#060a12',
+            primaryColor: '#0d121d',
+            primaryBorderColor: '#3f4a60',
+            primaryTextColor: '#e2e8f0',
+            lineColor: '#3f4a60',
+            secondaryColor: '#001520',
+            tertiaryColor: '#080b11',
+            fontSize: '13px',
+            fontFamily: 'Outfit, sans-serif'
+        },
+        flowchart: {
+            useMaxWidth: true,
+            htmlLabels: true,
+            curve: 'basis'
+        }
+    });
+
+    // Tab switching
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+        btn.addEventListener('click', function() {
+            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+            document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+            this.classList.add('active');
+            document.getElementById('panel-' + this.dataset.tab).classList.add('active');
+        });
+    });
+</script>
+</body>
+</html>

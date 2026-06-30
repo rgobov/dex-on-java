@@ -52,7 +52,7 @@ class WithdrawalFinalizerTest {
         mm.registerUser(userId, 500.0);
 
         long ts = System.currentTimeMillis();
-        String msg = userId + ":200.0:" + ts;
+        String msg = userId + ":200.0:" + ts + ":false:0";
         String sig = DexSignatureUtil.sign(msg, keys.getPrivate());
 
         ChainTransaction withdrawTx = new ChainTransaction.Builder(ChainTransaction.TxType.WITHDRAW_SIGNED)
@@ -79,6 +79,90 @@ class WithdrawalFinalizerTest {
 
         assertTrue(handler.getPendingWithdrawals().isEmpty(),
                 "Pending withdrawal must be removed after finalization");
+
+        finalizer.stop();
+        disruptor.shutdown();
+        bridge.stop();
+    }
+
+    @Test
+    void testFastWithdrawalCreditsL1Immediately() throws Exception {
+        ArbitrumBridge bridge = new ArbitrumBridge(50000, 50000, 200, 50000);
+        bridge.depositL1("user-1", 1000.0);
+        bridge.depositL1("lp-1", 5000.0);
+        bridge.start();
+
+        OracleService oracle = new OracleService();
+        oracle.setPrice("BTC-USD", 60000.0);
+        MarginManager mm = new MarginManager(oracle);
+        mm.registerMarket(new MarketSpecification("BTC-USD", "feed", 10.0, 0.05, 0.0, 0.0));
+        mm.registerUser("user-1", 1000.0);
+
+        StateExecutionHandler handler = new StateExecutionHandler(
+                mm, new LiquidationEngine(mm, oracle), new FundingCalculator(mm, oracle));
+
+        Disruptor<ChainTxEvent> disruptor = new Disruptor<>(
+                new ChainTxEventFactory(), 512,
+                DaemonThreadFactory.INSTANCE, ProducerType.SINGLE, new YieldingWaitStrategy()
+        );
+        disruptor.handleEventsWith(handler);
+        RingBuffer<ChainTxEvent> ringBuffer = disruptor.start();
+
+        // Генерируем ключи и подписываем withdrawal
+        KeyPair keys = DexSignatureUtil.generateKeyPair();
+        String userId = DexSignatureUtil.encodePublicKey(keys.getPublic());
+        mm.registerUser(userId, 1000.0);
+
+        long ts = System.currentTimeMillis();
+        int feeBps = 30; // 0.3%
+        String msg = userId + ":500.0:" + ts + ":true:" + feeBps;
+        String sig = DexSignatureUtil.sign(msg, keys.getPrivate());
+
+        ChainTransaction fastWithdrawTx = new ChainTransaction.Builder(ChainTransaction.TxType.WITHDRAW_SIGNED)
+                .userId(userId).amount(500.0).signature(sig).timestamp(ts)
+                .isFastWithdraw(true).fastFeeBps(feeBps)
+                .marketId("lp-1") // LP address as beneficiary
+                .build();
+
+        long seq = ringBuffer.next();
+        ringBuffer.get(seq).setTransaction(fastWithdrawTx);
+        ringBuffer.publish(seq);
+        Thread.sleep(100);
+
+        // L2 баланс уменьшился
+        assertEquals(500.0, mm.getBalance(userId).getFreeBalance(), 1e-6);
+
+        // Pending withdrawal создан с флагом fast
+        assertEquals(1, handler.getPendingWithdrawals().size());
+        var pw = handler.getPendingWithdrawals().get(0);
+        assertTrue(pw.isFastWithdraw);
+        assertEquals(feeBps, pw.fastFeeBps);
+        assertEquals("lp-1", pw.beneficiary);
+
+        double l1BeforeUser = bridge.getL1Balance(userId);
+        double l1BeforeLp = bridge.getL1Balance("lp-1");
+
+        // Запускаем финалайзер
+        WithdrawalFinalizer finalizer = new WithdrawalFinalizer(bridge, handler);
+        finalizer.start();
+        Thread.sleep(100);
+        finalizer.finalizePending();
+
+        // L1 баланс пользователя пополнился на amount - fee
+        double fee = 500.0 * feeBps / 10000.0; // 1.5
+        assertEquals(l1BeforeUser + 500.0 - fee, bridge.getL1Balance(userId), 1e-6,
+                "User should receive net amount on L1");
+
+        // LP получил комиссию
+        assertEquals(l1BeforeLp + fee, bridge.getL1Balance("lp-1"), 1e-6,
+                "LP should receive fee on L1");
+
+        // Не должно быть WithdrawalRequest на bridge (не нужна задержка 7 дней)
+        assertTrue(bridge.getWithdrawals().isEmpty(),
+                "Fast withdrawal should NOT create bridge withdrawal request");
+
+        // Pending удалён
+        assertTrue(handler.getPendingWithdrawals().isEmpty());
 
         finalizer.stop();
         disruptor.shutdown();

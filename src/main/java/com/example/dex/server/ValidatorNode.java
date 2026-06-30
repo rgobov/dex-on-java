@@ -2,6 +2,9 @@ package com.example.dex.server;
 
 import com.example.dex.bridge.ArbitrumBridge;
 import com.example.dex.bridge.ArbitrumBridgePoller;
+import com.example.dex.bridge.TonBridge;
+import com.example.dex.bridge.TonBridgePoller;
+import com.example.dex.bridge.TonWithdrawalFinalizer;
 import com.example.dex.bridge.WithdrawalFinalizer;
 import com.example.dex.disruptor.ChainTxEvent;
 import com.example.dex.disruptor.ChainTxEventFactory;
@@ -50,6 +53,11 @@ public final class ValidatorNode {
     private ArbitrumBridgePoller bridgePoller;
     private WithdrawalFinalizer withdrawalFinalizer;
     private RollupPublisher rollupPublisher;
+
+    // TON bridge (Telegram)
+    private TonBridge tonBridge;
+    private TonBridgePoller tonBridgePoller;
+    private TonWithdrawalFinalizer tonWithdrawalFinalizer;
     private Javalin api;
     private ScheduledExecutorService consensusRunner;
     private final AtomicLong txSeq = new AtomicLong(0);
@@ -148,6 +156,18 @@ public final class ValidatorNode {
                 consensus.receiveCommit(msg.getFromValidator(), msg.getHeight(), msg.getFromValidator()));
         network.start();
 
+        // TON Bridge (Telegram): без задержек и challenge window
+        tonBridge = new TonBridge();
+        tonBridge.start();
+        // Кредитуем vault для тестов (всегда есть USDT на выдачу)
+        tonBridge.creditVault(myId, 1_000_000.0);
+
+        tonBridgePoller = new TonBridgePoller(tonBridge, mempool, handler.getProcessedBridgeTxIds());
+        tonBridgePoller.start();
+
+        tonWithdrawalFinalizer = new TonWithdrawalFinalizer(tonBridge, handler);
+        tonWithdrawalFinalizer.start();
+
         // Consensus loop background thread
         consensusRunner = Executors.newSingleThreadScheduledExecutor();
         consensusRunner.scheduleAtFixedRate(() -> {
@@ -188,8 +208,11 @@ public final class ValidatorNode {
     public void stop() {
         if (rollupPublisher != null) rollupPublisher.stop();
         if (withdrawalFinalizer != null) withdrawalFinalizer.stop();
+        if (tonWithdrawalFinalizer != null) tonWithdrawalFinalizer.stop();
         if (bridgePoller != null) bridgePoller.stop();
+        if (tonBridgePoller != null) tonBridgePoller.stop();
         if (bridge != null) bridge.stop();
+        if (tonBridge != null) tonBridge.stop();
         if (consensusRunner != null) consensusRunner.shutdown();
         if (network != null) network.stop();
         if (api != null) api.stop();
@@ -273,11 +296,75 @@ public final class ValidatorNode {
                 ctx.json(Map.of("status", "error", "message", "Signature required for withdrawal"));
                 return;
             }
+            boolean isFast = Boolean.parseBoolean(body.getOrDefault("fast", "false").toString());
+            int feeBps = Integer.parseInt(body.getOrDefault("feeBps", "30").toString());
+
+            ChainTransaction.Builder builder = new ChainTransaction.Builder(ChainTransaction.TxType.WITHDRAW_SIGNED)
+                    .userId(userId).amount(amount).signature(signature)
+                    .isFastWithdraw(isFast).fastFeeBps(feeBps)
+                    .timestamp(System.currentTimeMillis());
+
+            if (isFast) {
+                // marketId carries the LP beneficiary address for fast withdrawals
+                builder.marketId(myId);
+            }
+
+            ChainTransaction tx = builder.build();
+            mempool.add(tx);
+
+            String msg = isFast
+                    ? "Fast withdrawal (LP=" + myId + ", fee=" + feeBps + "bps) submitted to mempool"
+                    : "Signed withdrawal submitted to mempool";
+            ctx.json(Map.of("status", "accepted", "message", msg));
+        });
+
+        // TON Bridge endpoints (Telegram)
+        api.post("/api/ton/deposit", ctx -> {
+            Map<String, Object> body = ctx.bodyAsClass(Map.class);
+            String userId = (String) body.get("userId");
+            double amount = Double.parseDouble(body.get("amount").toString());
+
+            // Симулируем отправку USDT из TON Wallet на наш vault
+            tonBridge.depositUsdt(userId, amount);
+            ctx.json(Map.of("status", "accepted", "message",
+                    "USDT deposit submitted to TON bridge. Funds arrive in ~3s"));
+        });
+
+        api.post("/api/ton/withdraw", ctx -> {
+            Map<String, Object> body = ctx.bodyAsClass(Map.class);
+            String userId = (String) body.get("userId");
+            double amount = Double.parseDouble(body.get("amount").toString());
+            String signature = (String) body.get("signature");
+
+            // Signed withdrawal через консенсус (как и обычный WITHDRAW_SIGNED)
+            if (signature == null || signature.isBlank()) {
+                ctx.status(HttpStatus.BAD_REQUEST);
+                ctx.json(Map.of("status", "error", "message", "Signature required"));
+                return;
+            }
             ChainTransaction tx = new ChainTransaction.Builder(ChainTransaction.TxType.WITHDRAW_SIGNED)
                     .userId(userId).amount(amount).signature(signature)
                     .timestamp(System.currentTimeMillis()).build();
             mempool.add(tx);
-            ctx.json(Map.of("status", "accepted", "message", "Signed withdrawal submitted to mempool"));
+            ctx.json(Map.of("status", "accepted", "message",
+                    "TON withdrawal submitted to mempool. USDT sent in ~1s"));
+        });
+
+        api.get("/api/ton/balance", ctx -> {
+            String userId = ctx.queryParam("userId");
+            if (userId == null) {
+                ctx.status(HttpStatus.BAD_REQUEST);
+                ctx.json(Map.of("status", "error", "message", "userId query parameter required"));
+                return;
+            }
+            double tonBalance = tonBridge.getTonBalance(userId);
+            var l2Balance = marginManager.getBalance(userId);
+            ctx.json(Map.of(
+                    "userId", userId,
+                    "tonBalance", tonBalance,
+                    "l2FreeBalance", l2Balance != null ? l2Balance.getFreeBalance() : 0.0,
+                    "l2LockedMargin", l2Balance != null ? l2Balance.getLockedMargin() : 0.0
+            ));
         });
 
         api.get("/api/bridge/balance", ctx -> {

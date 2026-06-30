@@ -29,6 +29,8 @@ public class ChainTransaction {
     private final boolean isLimit;
     private final String signature;
     private final long timestamp;
+    private final boolean isFastWithdraw;
+    private final int fastFeeBps;
 
     @JsonCreator
     private ChainTransaction(
@@ -43,7 +45,9 @@ public class ChainTransaction {
             @JsonProperty("isBuy") boolean isBuy,
             @JsonProperty("isLimit") boolean isLimit,
             @JsonProperty("signature") String signature,
-            @JsonProperty("timestamp") long timestamp) {
+            @JsonProperty("timestamp") long timestamp,
+            @JsonProperty("isFastWithdraw") boolean isFastWithdraw,
+            @JsonProperty("fastFeeBps") int fastFeeBps) {
         this.type = type;
         this.userId = userId;
         this.marketId = marketId;
@@ -56,12 +60,15 @@ public class ChainTransaction {
         this.isLimit = isLimit;
         this.signature = signature;
         this.timestamp = timestamp;
+        this.isFastWithdraw = isFastWithdraw;
+        this.fastFeeBps = fastFeeBps;
     }
 
     private ChainTransaction(Builder builder) {
         this(builder.type, builder.userId, builder.marketId, builder.amount, builder.price,
                 builder.leverage, builder.isIsolated, builder.orderId, builder.isBuy,
-                builder.isLimit, builder.signature, builder.timestamp);
+                builder.isLimit, builder.signature, builder.timestamp,
+                builder.isFastWithdraw, builder.fastFeeBps);
     }
 
     @JsonProperty("type") public TxType getType() { return type; }
@@ -76,6 +83,8 @@ public class ChainTransaction {
     @JsonProperty("isLimit") public boolean isLimit() { return isLimit; }
     @JsonProperty("signature") public String getSignature() { return signature; }
     @JsonProperty("timestamp") public long getTimestamp() { return timestamp; }
+    @JsonProperty("isFastWithdraw") public boolean isFastWithdraw() { return isFastWithdraw; }
+    @JsonProperty("fastFeeBps") public int getFastFeeBps() { return fastFeeBps; }
 
     public Order toOrder() {
         if (type != TxType.PLACE_ORDER) {
@@ -97,6 +106,8 @@ public class ChainTransaction {
         private boolean isLimit = true;
         private String signature;
         private long timestamp = System.currentTimeMillis();
+        private boolean isFastWithdraw;
+        private int fastFeeBps;
 
         public Builder(TxType type) {
             this.type = type;
@@ -113,6 +124,8 @@ public class ChainTransaction {
         public Builder isLimit(boolean isLimit) { this.isLimit = isLimit; return this; }
         public Builder signature(String signature) { this.signature = signature; return this; }
         public Builder timestamp(long timestamp) { this.timestamp = timestamp; return this; }
+        public Builder isFastWithdraw(boolean isFastWithdraw) { this.isFastWithdraw = isFastWithdraw; return this; }
+        public Builder fastFeeBps(int fastFeeBps) { this.fastFeeBps = fastFeeBps; return this; }
 
         public ChainTransaction build() {
             return new ChainTransaction(this);

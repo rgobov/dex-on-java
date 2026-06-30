@@ -13,8 +13,13 @@ public class WithdrawalFinalizer {
     private final StateExecutionHandler handler;
     private final ScheduledExecutorService executor;
     private volatile boolean running;
+    private final String defaultLpAddress;
 
     public WithdrawalFinalizer(ArbitrumBridge bridge, StateExecutionHandler handler) {
+        this(bridge, handler, "lp-1");
+    }
+
+    public WithdrawalFinalizer(ArbitrumBridge bridge, StateExecutionHandler handler, String defaultLpAddress) {
         this.bridge = bridge;
         this.handler = handler;
         this.executor = Executors.newSingleThreadScheduledExecutor(r -> {
@@ -22,6 +27,7 @@ public class WithdrawalFinalizer {
             t.setDaemon(true);
             return t;
         });
+        this.defaultLpAddress = defaultLpAddress;
     }
 
     public void start() {
@@ -43,9 +49,23 @@ public class WithdrawalFinalizer {
             if (pending.isEmpty()) return;
 
             for (StateExecutionHandler.PendingWithdrawal pw : List.copyOf(pending)) {
-                String requestId = bridge.initiateWithdrawal(pw.userId, pw.amount);
-                System.out.println("[WITHDRAWAL_FINALIZER] Initiated L1 withdrawal " + requestId
-                        + " for " + pw.userId + " amount=" + pw.amount);
+                if (pw.isFastWithdraw) {
+                    double fee = pw.amount * pw.fastFeeBps / 10000.0;
+                    double netAmount = pw.amount - fee;
+                    String lp = pw.beneficiary != null ? pw.beneficiary : defaultLpAddress;
+
+                    bridge.depositL1(pw.userId, netAmount);
+                    bridge.depositL1(lp, fee);
+
+                    System.out.println("[WITHDRAWAL_FINALIZER] FAST withdrawal for " + pw.userId
+                            + " net=" + String.format("%.2f", netAmount)
+                            + " fee=" + String.format("%.2f", fee)
+                            + " LP=" + lp);
+                } else {
+                    String requestId = bridge.initiateWithdrawal(pw.userId, pw.amount);
+                    System.out.println("[WITHDRAWAL_FINALIZER] Initiated L1 withdrawal " + requestId
+                            + " for " + pw.userId + " amount=" + pw.amount);
+                }
                 handler.removePendingWithdrawal(pw);
             }
         } catch (Exception e) {

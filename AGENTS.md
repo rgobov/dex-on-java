@@ -1,5 +1,19 @@
 # AGENTS.md — dex-on-java
 
+## ⚠️ AI Instruction: read code before editing
+
+Before making ANY change to the codebase, you MUST:
+
+1. **Read the file(s) you plan to edit** — never rely on your training data or previous conversation context for file contents
+2. **Check imports and existing patterns** — read 10+ lines of context around your edit point to match code style, library usage, and naming conventions
+3. **Search for similar code** — use `grep` or `task` to find examples of the pattern you're implementing before writing new code
+4. **Read the test file** for the class you're editing before changing production code
+5. **Verify `mvn test` passes** after your changes
+
+The codebase evolves with every session. Your training data is stale. Always read first.
+
+---
+
 ## Build & test
 
 ```bash
@@ -52,6 +66,19 @@ PEERS=val-1:8001,val-2:8002,val-3:8003 \
 
 Each validator exposes its own REST API on the configured port. Client SDK (`DexClient`) auto-failovers between them.
 
+### Telegram Mini App
+
+```bash
+# Start a single validator, then open:
+# http://localhost:8001/telegram.html
+mvn compile exec:java -Dexec.mainClass="com.example.dex.server.ValidatorNode" \
+  -Dexec.args="val-1 8001 data-val1"
+```
+
+For production Telegram Mini App: create bot via @BotFather → set Menu Button URL → URL must be HTTPS (ngrok ok for dev).
+
+---
+
 ## Architecture
 
 Full design doc in [`ARCHITECTURE.md`](ARCHITECTURE.md) — three-layer vision (L1 Arbitrum → L2 PBFT → L3 Execution).  
@@ -66,7 +93,7 @@ Single Maven module. Packages under `src/main/java/com/example/dex/`:
 | `matching/` | Price-time priority order book (OrderBook) |
 | `margin/` | MarginManager, LiquidationEngine, FundingCalculator |
 | `models/` | Order, Trade, ChainTransaction, RollupBatch, Position, etc. |
-| `bridge/` | L1↔L2 bridge + ArbitrumBridge mock (retryable tickets, challenge window) |
+| `bridge/` | **ArbitrumBridge** (retryable tickets, 7d challenge window) + **TonBridge** (instant, no window) + ArbitrumBridgePoller, TonBridgePoller, WithdrawalFinalizer, TonWithdrawalFinalizer |
 | `l1/` | L1 ledger state, PoS consensus, block/transaction models |
 | `l2/` | PBFT consensus, Mempool, L2Block, LeaderElector, ValidatorNetwork (HTTP) |
 | `l3/persistence/` | FlatFileStore — WAL (JSON Lines) + periodic snapshots, recovery on restart |
@@ -74,6 +101,41 @@ Single Maven module. Packages under `src/main/java/com/example/dex/`:
 | `oracle/` | Price oracle service |
 | `funding/` | Perpetual funding rate calculator |
 | `cryptography/` | RSA key generation, signing, verification |
+
+### Bridges
+
+Two parallel bridges for deposits/withdrawals:
+
+| Bridge | Network | Deposit | Withdrawal | Challenge window | When to use |
+|---|---|---|---|---|---|
+| `ArbitrumBridge` | Ethereum / Arbitrum | ~10-15 min (retryable ticket) | 7 days (or fast 0.3% fee) | 7 days | Production main |
+| `TonBridge` | TON (Telegram) | ~3 sec (USDT transfer) | ~1 sec (immediate) | None | Telegram Mini App |
+
+### Fast withdrawal (Arbitrum)
+
+Standard Arbitrum withdrawal takes 7 days. Fast withdrawal (0.3% fee) skips the wait:
+
+```
+User → POST /api/withdraw {fast: true, feeBps: 30}
+  → WITHDRAW_SIGNED tx with isFastWithdraw=true
+  → PBFT → StateExecutionHandler → PendingWithdrawal(fast=true)
+  → WithdrawalFinalizer → depositL1(user, amount - fee) + depositL1(LP, fee) ← IMMEDIATELY
+```
+
+ChainTransaction carries `isFastWithdraw` (boolean) and `fastFeeBps` (int, 0-10000) fields.
+
+### TON Bridge (Telegram)
+
+```
+User sends USDT (TON) to vault → TonBridge.depositUsdt()
+  → 3s confirmation → outbox → TonBridgePoller → Mempool → PBFT → L2 credited
+
+User withdraws → POST /api/ton/withdraw {signature}
+  → WITHDRAW_SIGNED → PBFT → TonWithdrawalFinalizer
+  → TonBridge.sendToWallet() ← IMMEDIATELY (no 7-day wait)
+```
+
+Telegram users (`tg-*` userId prefix) bypass RSA signature verification — auth is via Telegram WebApp `initData` (HMAC-signed by bot token).
 
 ### Disruptor pipeline
 
@@ -91,14 +153,37 @@ Client → POST /api/order → ValidatorNode (any peer)
     → FlatFileStore periodic snapshot (every 30s)
 ```
 
+---
+
+## UI
+
+| File | Description |
+|---|---|
+| `ui/index.html` | Full dashboard — orderbook, validator monitor, Arbitrum bridge, SVG network viz |
+| `ui/telegram.html` | Telegram Mini App — compact layout, TON bridge, Telegram auth |
+| `ui/telegram-app.js` | Telegram Mini App JS — TG WebApp SDK, TON deposit/withdraw, order placement |
+| `ui/app.js` | Dashboard JS — state polling, SVG animations, bridge modals |
+| `ui/style.css` | Shared styles — dark theme, both UIs |
+
+`telegram.html` loads `telegram-web-app.js` from CDN and falls back gracefully if not inside Telegram.
+
+---
+
 ## Test quirks
 
 - **`ThroughputBenchmarkTest`** is heavy (~250k transactions + JVM warmup). Expect it to take 30-60+ seconds. It measures TPS for L2 vs SMR paths and includes crypto/rollup hashing benchmarks.
 - `ValidatorNetworkTest` uses ephemeral ports (90xx) for inter-validator HTTP.
 - `ArbitrumBridgeTest` uses configurable timing parameters — 3 tests cover deposit, withdrawal, and challenge flow.
+- `ArbitrumBridgePollerTest` tests poller outbox reading + dedup — 3 tests.
+- `WithdrawalFinalizerTest` includes fast withdrawal test (L1 credited immediately, fee goes to LP).
+- `TonBridgeTest` tests TON bridge deposit, withdrawal, poller, no-challenge-window behavior — 4 tests.
 - `PbftConsensusTest` tests in-process PBFT with 3 validators — block commit, leader rotation, empty block.
-- No integration test requires external services. `EndToEndIntegrationTest` is in-process.
+- `StateMachineReplicationTest` tests bridge dedup, valid/invalid signature withdrawals, insufficient funds — 5 tests.
+- `EndToEndIntegrationTest` includes bridge deposit end-to-end test — 3 tests.
+- No integration test requires external services. All tests run in-process.
 - Benchmark test suppresses stdout during measurement via `System.setOut`.
+
+---
 
 ## Notable details
 
@@ -106,11 +191,17 @@ Client → POST /api/order → ValidatorNode (any peer)
 - No Maven wrapper (`mvnw`) committed.
 - No CI workflows, no pre-commit hooks, no linter config.
 - UI is plain HTML/JS/CSS served as external static files from `ui/`. No framework.
-- RSA signatures (SHA256withRSA) for all crypto operations.
+- RSA signatures (SHA256withRSA) for all crypto operations (skipped for `tg-*` users).
 - Rollup state root is SHA-256 of `(batchId | prevStateRoot | timestamp | tradeData)`.
 - `L1Vault` requires ≥2/3 validator multisig signatures for withdrawals.
 - Margin system supports both isolated and cross margin modes.
 - ValidatorNode uses `PEERS` env var for peer discovery (`val-1:8001,val-2:8002,...`).
-- FlatFileStore saves to `data-<nodeId>/l3/` — snapshot (JSON) + wal.jsonl.
+- FlatFileStore saves to `data-<nodeId>/l3/` — snapshot (JSON) + wal.jsonl. Saved every 30s (or every 10 blocks).
 - PbftConsensus uses stake-weighted round-robin leader election (equal stakes by default).
 - ArbitrumBridge mock has configurable challenge window (default 7 days in prod, ms in tests).
+- TonBridge mock has configurable confirm delay (default 3s).
+- `ChainTransaction` carries `isFastWithdraw` and `fastFeeBps` fields for fast Arbitrum withdrawal.
+- `PendingWithdrawal` carries `isFastWithdraw`, `fastFeeBps`, `beneficiary` fields; used by both finalizers.
+- Snapshots now persist `processedBridgeTicketIds` and `pendingWithdrawals` (restored on recovery).
+- All interaction with Arbitrum/TON bridges happens via mock in-memory — no external RPC needed.
+- Total: **36 tests**, all passing in ~17-20 seconds.

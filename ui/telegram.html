@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Antigravity DEX</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <link rel="stylesheet" href="style.css">
+    <style>
+        body { padding: 0; margin: 0; background: var(--tg-theme-bg-color, var(--bg-app)); color: var(--tg-theme-text-color, var(--text)); }
+        .tg-header { padding: 0.75rem; background: var(--tg-theme-secondary-bg-color, var(--bg-panel)); border-bottom: 1px solid var(--tg-theme-section-separator-color, var(--border)); position: sticky; top: 0; z-index: 10; }
+        .tg-header h1 { font-size: 1.1rem; font-weight: 700; display: flex; align-items: center; gap: 0.5rem; }
+        .tg-header h1 small { font-size: 0.65rem; font-weight: 400; color: var(--tg-theme-hint-color, var(--text-dim)); }
+        .tg-balances { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0.4rem; padding: 0.5rem 0.75rem; background: var(--tg-theme-secondary-bg-color, var(--bg-panel)); margin-bottom: 0.5rem; }
+        .tg-balance-item { text-align: center; }
+        .tg-balance-item .label { font-size: 0.6rem; color: var(--tg-theme-hint-color, var(--text-dim)); text-transform: uppercase; letter-spacing: 0.05em; }
+        .tg-balance-item .value { font-size: 0.95rem; font-weight: 700; font-family: 'JetBrains Mono', monospace; }
+        .tg-balance-item .value.green { color: var(--green); }
+        .tg-balance-item .value.amber { color: var(--amber); }
+        .tg-balance-item .value.cyan { color: var(--cyan); }
+        .tg-btn { display: block; width: 100%; padding: 0.7rem; border: none; border-radius: 8px; font-weight: 600; font-size: 0.85rem; cursor: pointer; margin-bottom: 0.4rem; transition: opacity 0.15s; }
+        .tg-btn:active { opacity: 0.7; }
+        .tg-btn.primary { background: var(--tg-theme-button-color, var(--cyan)); color: var(--tg-theme-button-text-color, #000); }
+        .tg-btn.secondary { background: var(--tg-theme-secondary-bg-color, var(--bg-card)); color: var(--tg-theme-text-color, var(--text)); border: 1px solid var(--tg-theme-section-separator-color, var(--border)); }
+        .tg-btn.success { background: var(--green); color: #000; }
+        .tg-btn.danger { background: var(--red); color: #fff; }
+        .tg-section { padding: 0.5rem 0.75rem; }
+        .tg-section-title { font-size: 0.7rem; font-weight: 600; color: var(--tg-theme-hint-color, var(--text-dim)); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 0.4rem; }
+        .tg-card { background: var(--tg-theme-secondary-bg-color, var(--bg-card)); border-radius: 10px; padding: 0.6rem; margin-bottom: 0.5rem; }
+        .tg-card-row { display: flex; justify-content: space-between; align-items: center; padding: 0.3rem 0; font-size: 0.85rem; }
+        .tg-card-row .lbl { color: var(--tg-theme-hint-color, var(--text-dim)); }
+        .tg-input { width: 100%; background: var(--tg-theme-secondary-bg-color, var(--bg-input)); border: 1px solid var(--tg-theme-section-separator-color, var(--border)); color: var(--tg-theme-text-color, #fff); padding: 0.55rem 0.75rem; border-radius: 8px; font-size: 0.9rem; font-weight: 600; font-family: 'JetBrains Mono', monospace; box-sizing: border-box; margin-bottom: 0.4rem; }
+        .tg-input:focus { outline: none; border-color: var(--tg-theme-button-color, var(--cyan)); }
+        .tg-tabs { display: flex; gap: 0.25rem; margin-bottom: 0.5rem; }
+        .tg-tab { flex: 1; padding: 0.5rem; text-align: center; border: none; border-radius: 8px; background: transparent; color: var(--tg-theme-hint-color, var(--text-dim)); font-weight: 600; font-size: 0.75rem; cursor: pointer; }
+        .tg-tab.active { background: var(--tg-theme-button-color, var(--cyan)); color: var(--tg-theme-button-text-color, #000); }
+        .tg-hint { font-size: 0.7rem; color: var(--tg-theme-hint-color, var(--text-dim)); padding: 0.3rem 0; }
+        .position-badge { display: inline-block; padding: 0.15rem 0.5rem; border-radius: 4px; font-size: 0.7rem; font-weight: 700; }
+        .position-badge.long { background: rgba(0,255,136,.15); color: var(--green); }
+        .position-badge.short { background: rgba(255,59,48,.15); color: var(--red); }
+        .position-badge.none { background: rgba(148,163,184,.1); color: var(--text-dim); }
+        .modal-overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,.7); z-index: 100; align-items: center; justify-content: center; }
+        .modal-overlay.active { display: flex; }
+        .modal-box { background: var(--tg-theme-bg-color, var(--bg-panel)); border-radius: 16px; padding: 1.25rem; width: 85%; max-width: 320px; border: 1px solid var(--tg-theme-section-separator-color, var(--border)); }
+        .modal-box h3 { font-size: 1rem; font-weight: 600; margin-bottom: 0.75rem; }
+        .status-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 0.3rem; }
+        .status-dot.online { background: var(--green); box-shadow: 0 0 6px var(--green); }
+        .status-dot.offline { background: var(--red); box-shadow: 0 0 6px var(--red); }
+    </style>
+</head>
+<body>
+    <div id="app">
+        <!-- Header -->
+        <div class="tg-header">
+            <h1>▲ Antigravity <small>TON DEX</small></h1>
+        </div>
+
+        <!-- User Info -->
+        <div class="tg-section">
+            <div class="tg-card" id="user-card">
+                <div class="tg-card-row">
+                    <span class="lbl">Пользователь</span>
+                    <span><strong id="tg-user-id">Загрузка...</strong></span>
+                </div>
+                <div class="tg-card-row">
+                    <span class="lbl">Статус</span>
+                    <span><span class="status-dot online" id="tg-connection-dot"></span><span id="tg-connection-status">Подключение...</span></span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Balances -->
+        <div class="tg-balances" id="tg-balances">
+            <div class="tg-balance-item">
+                <div class="label">TON USDT</div>
+                <div class="value amber" id="tg-ton-balance">0.00</div>
+            </div>
+            <div class="tg-balance-item">
+                <div class="label">Свободно</div>
+                <div class="value green" id="tg-l2-free">0.00</div>
+            </div>
+            <div class="tg-balance-item">
+                <div class="label">Маржа</div>
+                <div class="value cyan" id="tg-l2-margin">0.00</div>
+            </div>
+        </div>
+
+        <!-- Tabs: Trade / Bridge -->
+        <div class="tg-section">
+            <div class="tg-tabs">
+                <button class="tg-tab active" data-tab="trade" onclick="switchTab('trade')">Торговля</button>
+                <button class="tg-tab" data-tab="bridge" onclick="switchTab('bridge')">TON Мост</button>
+                <button class="tg-tab" data-tab="info" onclick="switchTab('info')">Позиции</button>
+            </div>
+        </div>
+
+        <!-- Tab: Trade -->
+        <div class="tg-section" id="tab-trade">
+            <div class="tg-card">
+                <div class="tg-card-row">
+                    <span class="lbl">Цена (USD)</span>
+                    <span><strong id="tg-mid-price">$60,000.00</strong></span>
+                </div>
+            </div>
+            <div class="tg-tabs" style="margin-bottom:0.25rem;">
+                <button class="tg-tab buy active" onclick="setSide('buy')">Купить</button>
+                <button class="tg-tab sell" onclick="setSide('sell')">Продать</button>
+            </div>
+            <input class="tg-input" type="number" id="tg-price" placeholder="Цена" value="60000">
+            <input class="tg-input" type="number" id="tg-amount" placeholder="Количество BTC" value="0.01" step="0.001">
+            <div style="display:flex;gap:0.4rem;">
+                <input class="tg-input" type="number" id="tg-leverage" placeholder="Плечо" value="10" style="width:40%;">
+                <button class="tg-btn primary" onclick="submitOrder()" style="width:60%;">Отправить</button>
+            </div>
+        </div>
+
+        <!-- Tab: Bridge -->
+        <div class="tg-section" id="tab-bridge" style="display:none;">
+            <div class="tg-card">
+                <div class="tg-card-row">
+                    <span class="lbl">Депозит (TON USDT → L2)</span>
+                    <span class="green" style="font-size:0.7rem;">~3 сек</span>
+                </div>
+                <input class="tg-input" type="number" id="tg-deposit-amount" placeholder="Сумма USDT" value="100">
+                <button class="tg-btn success" onclick="depositTon()">↑ Депозит</button>
+            </div>
+            <div class="tg-card">
+                <div class="tg-card-row">
+                    <span class="lbl">Вывод (L2 → TON USDT)</span>
+                    <span class="green" style="font-size:0.7rem;">~1 сек</span>
+                </div>
+                <input class="tg-input" type="number" id="tg-withdraw-amount" placeholder="Сумма USDT" value="100">
+                <button class="tg-btn danger" onclick="withdrawTon()">↓ Вывод</button>
+            </div>
+            <div class="tg-hint">Вывод подписывается вашим Telegram ID. Никаких ожиданий — USDT приходит моментально.</div>
+        </div>
+
+        <!-- Tab: Info -->
+        <div class="tg-section" id="tab-info" style="display:none;">
+            <div class="tg-card">
+                <div class="tg-card-row"><span class="lbl">Позиция</span><span id="tg-pos-side" class="position-badge none">—</span></div>
+                <div class="tg-card-row"><span class="lbl">Размер</span><span id="tg-pos-size">0.00 BTC</span></div>
+                <div class="tg-card-row"><span class="lbl">Цена входа</span><span id="tg-pos-entry">$0.00</span></div>
+                <div class="tg-card-row"><span class="lbl">PnL</span><span id="tg-pos-pnl" style="font-family:'JetBrains Mono',monospace;">$0.00</span></div>
+            </div>
+            <div class="tg-card">
+                <div class="tg-card-row"><span class="lbl">Валидаторы</span><span id="tg-validators-status">3/3 Online</span></div>
+                <div class="tg-card-row"><span class="lbl">Высота блока</span><span id="tg-block-height">0</span></div>
+            </div>
+        </div>
+    </div>
+
+    <script src="telegram-app.js"></script>
+</body>
+</html>

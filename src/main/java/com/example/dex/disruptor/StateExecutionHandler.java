@@ -24,12 +24,23 @@ public class StateExecutionHandler implements EventHandler<ChainTxEvent> {
         public final String userId;
         public final double amount;
         public final long timestamp;
+        public final boolean isFastWithdraw;
+        public final int fastFeeBps;
+        public final String beneficiary;  // LP адрес для fast withdrawal
 
         public PendingWithdrawal(String requestId, String userId, double amount, long timestamp) {
+            this(requestId, userId, amount, timestamp, false, 0, null);
+        }
+
+        public PendingWithdrawal(String requestId, String userId, double amount, long timestamp,
+                                 boolean isFastWithdraw, int fastFeeBps, String beneficiary) {
             this.requestId = requestId;
             this.userId = userId;
             this.amount = amount;
             this.timestamp = timestamp;
+            this.isFastWithdraw = isFastWithdraw;
+            this.fastFeeBps = fastFeeBps;
+            this.beneficiary = beneficiary;
         }
     }
 
@@ -167,25 +178,40 @@ public class StateExecutionHandler implements EventHandler<ChainTxEvent> {
         String userId = tx.getUserId();
         double amount = tx.getAmount();
         long timestamp = tx.getTimestamp();
+        boolean isFast = tx.isFastWithdraw();
+        int feeBps = tx.getFastFeeBps();
 
         // Верифицируем RSA-подпись пользователя
-        String message = userId + ":" + amount + ":" + timestamp;
-        try {
-            PublicKey pubKey = DexSignatureUtil.decodePublicKey(userId);
-            if (!DexSignatureUtil.verify(message, tx.getSignature(), pubKey)) {
-                System.out.println("[REJECT] WITHDRAW_SIGNED: неверная подпись для " + userId);
+        // Telegram-пользователи (tg-*) аутентифицированы через Telegram WebApp initData,
+        // RSA не требуется. Для остальных — проверяем подпись.
+        if (!userId.startsWith("tg-")) {
+            String message = userId + ":" + amount + ":" + timestamp + ":" + isFast + ":" + feeBps;
+            try {
+                PublicKey pubKey = DexSignatureUtil.decodePublicKey(userId);
+                if (!DexSignatureUtil.verify(message, tx.getSignature(), pubKey)) {
+                    System.out.println("[REJECT] WITHDRAW_SIGNED: неверная подпись для " + userId);
+                    return;
+                }
+            } catch (Exception e) {
+                System.out.println("[REJECT] WITHDRAW_SIGNED: ошибка верификации для " + userId + ": " + e.getMessage());
                 return;
             }
-        } catch (Exception e) {
-            System.out.println("[REJECT] WITHDRAW_SIGNED: ошибка верификации для " + userId + ": " + e.getMessage());
-            return;
         }
 
         boolean ok = marginManager.withdraw(userId, amount);
         if (ok) {
             String requestId = "l2-withdraw-" + java.util.UUID.randomUUID().toString().substring(0, 8);
-            pendingWithdrawals.add(new PendingWithdrawal(requestId, userId, amount, timestamp));
-            System.out.println("[ACCEPT] WITHDRAW_SIGNED " + userId + " amount=" + amount + " → pending L1 finalization");
+            if (isFast) {
+                double fee = amount * feeBps / 10000.0;
+                String beneficiary = tx.getMarketId() != null ? tx.getMarketId() : "lp-default";
+                pendingWithdrawals.add(new PendingWithdrawal(requestId, userId, amount, timestamp,
+                        true, feeBps, beneficiary));
+                System.out.println("[ACCEPT] FAST WITHDRAW " + userId + " amount=" + amount
+                        + " fee=" + String.format("%.2f", fee) + " → L1 immediately");
+            } else {
+                pendingWithdrawals.add(new PendingWithdrawal(requestId, userId, amount, timestamp));
+                System.out.println("[ACCEPT] WITHDRAW_SIGNED " + userId + " amount=" + amount + " → pending L1 finalization");
+            }
         } else {
             System.out.println("[REJECT] WITHDRAW_SIGNED: недостаточно средств для " + userId);
         }

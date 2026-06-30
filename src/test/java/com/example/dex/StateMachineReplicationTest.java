@@ -254,7 +254,7 @@ public class StateMachineReplicationTest {
         Thread.sleep(50);
 
         long ts = System.currentTimeMillis();
-        String msg = userId + ":" + 200.0 + ":" + ts;
+        String msg = userId + ":" + 200.0 + ":" + ts + ":false:0";
         String sig = DexSignatureUtil.sign(msg, keys.getPrivate());
 
         nodeA.sendTransaction(new ChainTransaction.Builder(ChainTransaction.TxType.WITHDRAW_SIGNED)

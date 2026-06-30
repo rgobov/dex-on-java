@@ -77,6 +77,9 @@ public class FlatFileStore {
             m.put("userId", pw.userId);
             m.put("amount", pw.amount);
             m.put("timestamp", pw.timestamp);
+            m.put("isFastWithdraw", pw.isFastWithdraw);
+            m.put("fastFeeBps", pw.fastFeeBps);
+            m.put("beneficiary", pw.beneficiary);
             list.add(m);
         }
         return list;
@@ -382,6 +385,12 @@ public class FlatFileStore {
             for (TradeEntry te : trades) {
                 handler.getExecutedTrades().add(toTrade(te));
             }
+
+            for (PendingWithdrawalEntry pwe : pendingWithdrawals) {
+                handler.getPendingWithdrawals().add(new StateExecutionHandler.PendingWithdrawal(
+                        pwe.requestId, pwe.userId, pwe.amount, pwe.timestamp,
+                        pwe.isFastWithdraw, pwe.fastFeeBps, pwe.beneficiary));
+            }
         }
 
         // --- Entry types ---
@@ -462,11 +471,17 @@ public class FlatFileStore {
             public final String requestId, userId;
             public final double amount;
             public final long timestamp;
+            public final boolean isFastWithdraw;
+            public final int fastFeeBps;
+            public final String beneficiary;
             PendingWithdrawalEntry(Map<String, Object> m) {
                 this.requestId = (String) m.get("requestId");
                 this.userId = (String) m.get("userId");
                 this.amount = ((Number) m.get("amount")).doubleValue();
                 this.timestamp = ((Number) m.get("timestamp")).longValue();
+                this.isFastWithdraw = m.containsKey("isFastWithdraw") && (boolean) m.get("isFastWithdraw");
+                this.fastFeeBps = m.containsKey("fastFeeBps") ? ((Number) m.get("fastFeeBps")).intValue() : 0;
+                this.beneficiary = (String) m.getOrDefault("beneficiary", null);
             }
         }
     }
