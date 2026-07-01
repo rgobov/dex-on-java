@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Antigravity DEX — презентация</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/theme/night.css">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <script>mermaid.initialize({startOnLoad:true, theme:'dark', themeVariables:{primaryColor:'#3388ff', secondaryColor:'#ff8833'}})</script>
+  <style>
+    .reveal { font-family: 'Inter', 'Segoe UI', system-ui, sans-serif; }
+    .reveal h1 { font-size: 2.8em; text-transform: none; letter-spacing: -0.02em; }
+    .reveal h2 { font-size: 1.8em; text-transform: none; color: #88bbff; }
+    .reveal h3 { text-transform: none; }
+    .reveal ul { line-height: 1.7; }
+    .reveal li { margin: 0.3em 0; }
+    .highlight { color: #ffcc44; }
+    .green { color: #66dd88; }
+    .red { color: #ff6666; }
+    .dim { color: #888; }
+    table { font-size: 0.7em; }
+    th { color: #88bbff; }
+    .tag { display: inline-block; background: #3388ff33; border: 1px solid #3388ff66; border-radius: 4px; padding: 0.1em 0.5em; font-size: 0.6em; margin-right: 0.3em; }
+    .tag-warn { background: #ff883333; border-color: #ff883366; }
+    .tag-green { background: #66dd8833; border-color: #66dd8866; }
+    .slide-footer { position: absolute; bottom: 0.5em; left: 0; right: 0; text-align: center; font-size: 0.4em; color: #555; }
+    .mermaid-box { background: #1a1a2e; padding: 0.8em; border-radius: 8px; margin: 0.5em 0; }
+    .two-col { display: flex; gap: 1.5em; justify-content: center; }
+    .two-col > div { flex: 1; }
+    .big-number { font-size: 2.5em; font-weight: 700; color: #88bbff; }
+    .big-number .unit { font-size: 0.4em; color: #666; }
+    .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1em; margin-top: 0.5em; }
+    .grid-3 > div { background: #1a1a2e; padding: 0.8em; border-radius: 8px; }
+    .roadmap-phase { background: #1a1a2e; border-left: 3px solid #3388ff; padding: 0.5em 0.8em; margin: 0.5em 0; border-radius: 0 6px 6px 0; }
+    .roadmap-phase.done { border-left-color: #66dd88; }
+    .roadmap-phase.future { border-left-color: #888; }
+    .roadmap-phase.now { border-left-color: #ffcc44; }
+  </style>
+</head>
+<body>
+  <div class="reveal">
+    <div class="slides">
+
+      <!-- SLIDE 1: Title -->
+      <section data-background-gradient="linear-gradient(135deg, #0a0a1a, #1a1a3a)">
+        <h1>Antigravity DEX</h1>
+        <p style="font-size:1.2em;color:#88bbff;margin-top:-0.3em;">Децентрализованная биржа деривативов</p>
+        <p style="font-size:0.8em;margin-top:2em;">PBFT consensus · LMAX Disruptor · Arbitrum + TON bridges</p>
+        <p style="font-size:0.6em;color:#888;margin-top:2em;">Конфиденциально · Для обсуждения</p>
+        <div class="slide-footer">Antigravity DEX · 2026</div>
+      </section>
+
+      <!-- SLIDE 2: Problem -->
+      <section data-background-gradient="linear-gradient(135deg, #1a0a0a, #1a1a3a)">
+        <h2>Проблема</h2>
+        <div class="two-col">
+          <div>
+            <h3>Централизованные биржи (CEX)</h3>
+            <ul>
+              <li><span class="tag tag-warn">Риск</span>Регулятор может заблокировать оператора</li>
+              <li><span class="tag tag-warn">Риск</span>Single point of failure — API Gateway</li>
+              <li><span class="tag tag-warn">Риск</span>Зависимость от AWS/CloudFront</li>
+              <li><span class="tag tag-warn">Риск</span>Требуют лицензий и KYC</li>
+            </ul>
+          </div>
+          <div>
+            <h3>HyperLiquid (эталон)</h3>
+            <ul>
+              <li><span class="tag tag-green">+</span> Децентрализованный консенсус (24 валидатора)</li>
+              <li><span class="tag tag-warn">—</span> Единый API Gateway (2 даунтайма в 2025)</li>
+              <li><span class="tag tag-warn">—</span> ~$360k/мес на инфраструктуру</li>
+              <li><span class="tag tag-warn">—</span> Закрытый код</li>
+            </ul>
+          </div>
+        </div>
+        <p style="margin-top:1em;font-size:0.8em;color:#ffcc44;">Вывод: устойчивость к регуляторам = децентрализация + open-source</p>
+      </section>
+
+      <!-- SLIDE 3: Solution -->
+      <section data-background-gradient="linear-gradient(135deg, #0a1a0a, #1a1a3a)">
+        <h2>Решение</h2>
+        <div class="grid-3">
+          <div>
+            <div class="big-number">3 <span class="unit">валидатора</span></div>
+            <p style="font-size:0.7em;color:#888;">PBFT, 1 Byzantine fault<br>2/3 подписей для вывода</p>
+          </div>
+          <div>
+            <div class="big-number">∞ <span class="unit">API endpoints</span></div>
+            <p style="font-size:0.7em;color:#888;">Каждый валидатор = свой REST API<br>Клиент выбирает любой</p>
+          </div>
+          <div>
+            <div class="big-number">$600 <span class="unit">/мес</span></div>
+            <p style="font-size:0.7em;color:#888;">3 × bare metal сервера<br>В 600× дешевле HyperLiquid</p>
+          </div>
+        </div>
+        <ul style="margin-top:0.8em;font-size:0.75em;">
+          <li>Open-source — код публичный, лицензия разрешает независимым валидаторам запускать ноды</li>
+          <li>Регуляторная стратегия: «мы — протокол, не биржа. Код открыт, валидаторы независимы»</li>
+          <li>Никакого CloudFront, никакого KYC (кошелёк = адрес)</li>
+        </ul>
+      </section>
+
+      <!-- SLIDE 4: Architecture -->
+      <section>
+        <h2>Архитектура</h2>
+        <div class="mermaid-box">
+          <div class="mermaid">
+            graph TB
+              subgraph L1["L1: Ethereum"]
+                ETH["Base settlement layer"]
+              end
+              subgraph L2["L2: Arbitrum / TON"]
+                ARB["Arbitrum<br/>USDC vault, rollup batches"]
+                TON["TON<br/>USDT vault, Telegram bridge"]
+              end
+              subgraph L3["L3: Our SMR (3 validators)"]
+                PBFT["PBFT Consensus<br/>PrePrepare → Prepare → Commit"]
+                DR["Disruptor RingBuffer<br/>~1ms execution"]
+                EX["StateExecutionHandler<br/>OrderBook · Margin · Liq"]
+                WAL["FlatFileStore<br/>WAL + snapshots"]
+                US["UI Dashboard + Telegram Mini App"]
+              end
+              ETH --> ARB
+              ETH --> TON
+              ARB -->|deposit/withdraw| PBFT
+              TON -->|deposit/withdraw| PBFT
+              PBFT --> DR --> EX --> WAL
+              US -->|REST API| PBFT
+          </div>
+        </div>
+        <p style="font-size:0.6em;color:#888;">
+          Примечание: Java-пакеты l1/, l2/, l3/ — legacy naming, не совпадают со слоями.
+          L1=l1.LedgerState (не используется), L2=l2.PbftConsensus, L3=l3.FlatFileStore.
+        </p>
+      </section>
+
+      <!-- SLIDE 5: Speed (honest) -->
+      <section data-background-gradient="linear-gradient(135deg, #0a0a1a, #1a2a1a)">
+        <h2>Скорость</h2>
+        <div class="two-col">
+          <div>
+            <div class="big-number" style="color:#66dd88;">~5M <span class="unit">tx/s</span></div>
+            <p><strong>Execution (один валидатор)</strong></p>
+            <p style="font-size:0.65em;color:#888;">
+              LMAX Disruptor + StateExecutionHandler<br>
+              in-memory matching, без I/O на горячем пути<br>
+              <span class="tag tag-green">Измерено</span>ThroughputBenchmarkTest, прогретая JVM
+            </p>
+          </div>
+          <div>
+            <div class="big-number" style="color:#ffcc44;">TBD <span class="unit">tx/s</span></div>
+            <p><strong>Consensus (3 валидатора)</strong></p>
+            <p style="font-size:0.65em;color:#888;">
+              PBFT round-trips через HTTP<br>
+              ~1s block interval (настраиваемый)<br>
+              <span class="tag tag-warn">Не измерено</span>Network benchmark с реальной топологией
+            </p>
+          </div>
+        </div>
+        <p style="font-size:0.6em;color:#888;margin-top:0.5em;">
+          End-to-end latency: pending benchmark с 3 регионами. Оценка: 50-200ms.
+        </p>
+      </section>
+
+      <!-- SLIDE 6: Multi-Bridge -->
+      <section>
+        <h2>Два моста</h2>
+        <div class="two-col">
+          <div style="background:#1a1a2e;padding:0.6em 1em;border-radius:8px;">
+            <h3 style="color:#88bbff;">Arbitrum Bridge</h3>
+            <p style="font-size:0.7em;">
+              <strong>Актив:</strong> USDC<br>
+              <strong>Депозит:</strong> ~10-15 мин (retryable ticket)<br>
+              <strong>Вывод:</strong> 7 дней (или fast 0.3% fee → моментально)<br>
+              <strong>Challenge window:</strong> 7 дней<br>
+              <strong>Использование:</strong> Основной мост для крупных сумм
+            </p>
+          </div>
+          <div style="background:#1a1a2e;padding:0.6em 1em;border-radius:8px;">
+            <h3 style="color:#88bbff;">TON Bridge</h3>
+            <p style="font-size:0.7em;">
+              <strong>Актив:</strong> USDT<br>
+              <strong>Депозит:</strong> ~3 сек<br>
+              <strong>Вывод:</strong> ~1 сек (мгновенно)<br>
+              <strong>Challenge window:</strong> Нет<br>
+              <strong>Использование:</strong> Telegram Mini App, retail
+            </p>
+          </div>
+        </div>
+        <p style="font-size:0.7em;margin-top:0.8em;color:#ffcc44;">
+          ⚠ Оба моста — in-memory mock. Реальная интеграция с Arbitrum Nitro и TON RPC — следующий шаг.
+        </p>
+      </section>
+
+      <!-- SLIDE 7: Telegram Mini App -->
+      <section>
+        <h2>Telegram Mini App</h2>
+        <div class="two-col">
+          <div>
+            <ul>
+              <li>Компактный UI внутри Telegram</li>
+              <li>Авторизация через WebApp SDK (HMAC initData)</li>
+              <li>Депозит USDT (TON) → торговля → вывод USDT (TON)</li>
+              <li>Пользователи <code>tg-*</code> пропускают RSA-верификацию</li>
+              <li>Падение если не в Telegram — грациозное</li>
+            </ul>
+            <p style="font-size:0.6em;color:#888;margin-top:0.8em;">
+              Файлы: ui/telegram.html · ui/telegram-app.js · ui/style.css
+            </p>
+          </div>
+          <div style="background:#1a1a2e;padding:0.6em 1em;border-radius:8px;font-size:0.6em;font-family:monospace;">
+            <p style="color:#88bbff;">Пример флоу:</p>
+            <ol style="color:#ccc;">
+              <li>User отправляет USDT в vault</li>
+              <li>TonBridgePoller → Mempool → PBFT</li>
+              <li>StateExecutionHandler.credit(user)</li>
+              <li>User ставит ордер → OrderBook</li>
+              <li>User выводит → TonBridge.sendToWallet()</li>
+            </ol>
+          </div>
+        </div>
+        <p style="font-size:0.65em;margin-top:0.5em;">
+          <span class="tag tag-green">Работает</span>Mock TON bridge + Telegram UI
+          <span class="tag tag-warn">Ожидает</span>Реальная интеграция TON Connect / Tonkeeper
+        </p>
+      </section>
+
+      <!-- SLIDE 8: Comparison -->
+      <section>
+        <h2>Сравнение с HyperLiquid</h2>
+        <table>
+          <thead>
+            <tr><th>Параметр</th><th>HyperLiquid</th><th>Antigravity DEX</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>Консенсус</td><td>HyperBFT (HotStuff), 24+ валидатора</td><td><strong>PBFT, 3 валидатора</strong></td></tr>
+            <tr><td>Latency</td><td>~200ms median, ~900ms p99</td><td><strong>~10-50ms (estimated)</strong></td></tr>
+            <tr><td>TPS</td><td>200k/sec</td><td><strong>~5M (single node)</strong></td></tr>
+            <tr><td>Settlement</td><td>Собственный L1</td><td><strong>Arbitrum / TON (L2)</strong></td></tr>
+            <tr><td>Single point of failure</td><td><span class="red">Есть</span> — CloudFront API</td><td><span class="green">Нет</span> — каждый валидатор = свой API</td></tr>
+            <tr><td>География</td><td>AWS Tokyo (все 24)</td><td><strong>3 региона (Lon, DE, SG)</strong></td></tr>
+            <tr><td>Язык</td><td>Rust</td><td><strong>Java 25</strong></td></tr>
+            <tr><td>Smart contracts</td><td>HyperEVM</td><td><strong>Нет (Plan: опционально)</strong></td></tr>
+            <tr><td>Native token</td><td>HYPE ($10B)</td><td><strong>Опционально</strong></td></tr>
+            <tr><td>OpEx</td><td>~$360k/мес</td><td><strong>~$600/мес</strong></td></tr>
+            <tr><td>Код</td><td>Закрытый</td><td><strong>Open-source</strong></td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <!-- SLIDE 9: Revenue & Costs -->
+      <section data-background-gradient="linear-gradient(135deg, #0a1a0a, #1a1a3a)">
+        <h2>Экономика</h2>
+        <div class="two-col">
+          <div>
+            <h3>Доход</h3>
+            <p style="font-size:1.2em;"><strong>Protocol fee:</strong> 0.02-0.05%</p>
+            <p style="font-size:0.65em;color:#888;">С каждой сделки. Без нативного токена.</p>
+            <ul style="font-size:0.65em;">
+              <li>Fast withdrawal fee: 0.3% → LP</li>
+              <li>Funding rate: переменная (premium index)</li>
+              <li>Возможен native token: стейкинг, DAO, fee discount</li>
+            </ul>
+          </div>
+          <div>
+            <h3>Расходы</h3>
+            <p style="font-size:1.2em;"><strong>~$600/мес</strong></p>
+            <ul style="font-size:0.65em;">
+              <li>3 × bare metal VPS ($30-50/мес each)</li>
+              <li>Arbitrum batch: ~$17-50/мес (@ $0.001-0.003)</li>
+              <li>TON RPC: ~$0 (public endpoints)</li>
+              <li>Домены, SSL: Free (Let's Encrypt)</li>
+            </ul>
+          </div>
+        </div>
+        <p style="font-size:0.65em;margin-top:0.8em;color:#888;">
+          PnL положительный при ежедневном объёме &gt; $100k (при fee 0.03%)
+        </p>
+      </section>
+
+      <!-- SLIDE 10: Regulatory -->
+      <section>
+        <h2>Регуляторная стратегия</h2>
+        <div style="background:#1a1a2e;padding:0.6em 1.2em;border-radius:8px;text-align:left;">
+          <ol style="font-size:0.75em;">
+            <li><strong>Incorporation:</strong> Cayman Islands / BVI</li>
+            <li>Компания владеет IP, <strong>но не управляет биржей</strong></li>
+            <li>Сеть валидаторов — открытая, код open-source</li>
+            <li>Геоблокировка US + sanctioned countries (Cloudflare IP)</li>
+            <li><strong>Без KYC</strong> — кошелёк = адрес, торговля без идентификации</li>
+            <li>Аргумент регулятору: «мы — протокол (L2 settlement layer), не биржа. Код открыт, валидаторы независимы»</li>
+          </ol>
+        </div>
+        <p style="font-size:0.65em;margin-top:0.5em;color:#ffcc44;">
+          ⚠ Это не юридическая консультация. Требуется advice от юриста по crypto regulation.
+        </p>
+      </section>
+
+      <!-- SLIDE 11: Roadmap -->
+      <section>
+        <h2>Roadmap</h2>
+        <div class="two-col" style="font-size:0.7em;">
+          <div>
+            <h3>✅ Сделано</h3>
+            <div class="roadmap-phase done">PBFT consensus (3 validators, 2/3)</div>
+            <div class="roadmap-phase done">LMAX Disruptor pipeline</div>
+            <div class="roadmap-phase done">OrderBook (price-time priority)</div>
+            <div class="roadmap-phase done">MarginManager (cross + isolated)</div>
+            <div class="roadmap-phase done">LiquidationEngine + FundingCalculator</div>
+            <div class="roadmap-phase done">ArbitrumBridge + TonBridge (mock)</div>
+            <div class="roadmap-phase done">FlatFileStore (WAL + snapshots + recovery)</div>
+            <div class="roadmap-phase done">Telegram Mini App (TON deposit/withdraw)</div>
+            <div class="roadmap-phase done">36 тестов</div>
+          </div>
+          <div>
+            <h3>🔜 Нужно решить</h3>
+            <div class="roadmap-phase now">Currency model (single USD / two-pool / oracle-weighted)</div>
+            <div class="roadmap-phase now">Real Arbitrum Nitro + TON RPC integration</div>
+            <div class="roadmap-phase now">TON Vault custody (multisig / contract + time-lock)</div>
+            <div class="roadmap-phase now">Validator stake model, slashing, fee distribution</div>
+            <div class="roadmap-phase future">Network benchmark (3 региона, TCP)</div>
+            <div class="roadmap-phase future">Security audit</div>
+            <div class="roadmap-phase future">gRPC между валидаторами</div>
+            <div class="roadmap-phase future">Native token / DAO governance</div>
+            <div class="roadmap-phase future">zk-rollup / validity proofs</div>
+          </div>
+        </div>
+        <p style="font-size:0.6em;color:#888;margin-top:0.5em;">Детали: <a href="UNRESOLVED.md" style="color:#88bbff;">UNRESOLVED.md</a></p>
+      </section>
+
+      <!-- SLIDE 12: Ask -->
+      <section data-background-gradient="linear-gradient(135deg, #0a0a1a, #1a2a2a)">
+        <h2>Что нужно сейчас</h2>
+        <div class="grid-3">
+          <div>
+            <div style="font-size:1.5em;font-weight:700;color:#ffcc44;">1</div>
+            <p><strong>Security audit</strong></p>
+            <p style="font-size:0.6em;color:#888;">
+              PBFT consensus, bridges, margin logic, crypto. <br>Базово — до реальных денег.
+            </p>
+          </div>
+          <div>
+            <div style="font-size:1.5em;font-weight:700;color:#ffcc44;">2</div>
+            <p><strong>Real L2 integration PoC</strong></p>
+            <p style="font-size:0.6em;color:#888;">
+              Arbitrum Nitro (RPC + retryable tickets) + TON RPC (lite server).<br>
+              Замена mock на реальные вызовы.
+            </p>
+          </div>
+          <div>
+            <div style="font-size:1.5em;font-weight:700;color:#ffcc44;">3</div>
+            <p><strong>Validator economics design</strong></p>
+            <p style="font-size:0.6em;color:#888;">
+              Stake model, slashing, fee distribution.<br>
+              Как привлечь независимых валидаторов.
+            </p>
+          </div>
+        </div>
+        <p style="font-size:0.8em;margin-top:1em;">
+          Готовы к диалогу с инвесторами и техническими партнёрами.
+        </p>
+      </section>
+
+    </div>
+  </div>
+  <script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.js"></script>
+  <script>
+    Reveal.initialize({
+      controls: true,
+      progress: true,
+      hash: true,
+      slideNumber: true,
+      transition: 'slide',
+      width: 1200,
+      height: 800
+    });
+  </script>
+</body>
+</html>
