@@ -66,21 +66,24 @@
 \begin{frame}{Трёхслойная архитектура}
 
 \centering
-\begin{tikzpicture}[node distance=1.5em, auto]
-\tikzstyle{layer}=[rectangle, rounded corners, minimum width=22em, minimum height=2.2em, font=\bfseries]
-\tikzstyle{comp}=[rectangle, rounded corners, draw, minimum width=8em, minimum height=1.8em, font=\small]
+\begin{tikzpicture}[node distance=1.2em, auto]
+\tikzstyle{layer}=[rectangle, rounded corners, minimum width=22em, minimum height=2em, font=\bfseries]
+\tikzstyle{comp}=[rectangle, rounded corners, draw, minimum width=7em, minimum height=1.6em, font=\small]
 
-\node[layer, fill=blue!30] (l1) {L1: Ethereum --- Base settlement};
-\node[layer, fill=blue!20, below=of l1] (l2) {L2: Arbitrum (USDC) / TON (USDT)};
+\node[layer, fill=blue!30] (l1) {L1: Ethereum};
+\node[layer, fill=blue!20, below=of l1] (l2) {L2: Arbitrum (rollup batches + USDC)};
+\node[draw=none, right=3em of l2, font=\small] (tonnote) {\textcolor{gray}{TON: только платежи (Telegram)}};
+
 \node[layer, fill=blue!40, below=of l2] (l3) {L3: Our SMR (3 валидатора)};
 
-\node[comp, below=1.5em of l3] (pbft) {PBFT Consensus};
+\node[comp, below=1.8em of l3] (pbft) {PBFT Consensus};
 \node[comp, right=of pbft] (disr) {Disruptor};
 \node[comp, right=of disr] (exe) {Execution};
 \node[comp, below=of pbft] (wal) {FlatFileStore};
 
 \draw[->, thick] (l1) -- (l2);
 \draw[->, thick] (l2) -- (l3);
+\draw[->, dashed, gray] (l3.east) -- ++(1.2em,0) |- (tonnote.south);
 \draw[->] (pbft) -- (disr);
 \draw[->] (disr) -- (exe);
 \draw[->] (exe) -- (wal);
@@ -182,20 +185,20 @@
 
 \begin{columns}[t]
 \begin{column}{0.48\textwidth}
-\textbf{Arbitrum Bridge (USDC)}
+\textbf{Arbitrum = L2 Settlement}
 \begin{itemize}
+    \item \textbf{Rollup batch posting} (state root + trades)
     \item Депозит: retryable ticket (10--15 мин)
     \item Вывод: 7 дней (standard) / fast 0.3\%
     \item Challenge window: 7 дней
-    \item Rollup batch posting (state root)
 \end{itemize}
 \end{column}
 \begin{column}{0.48\textwidth}
-\textbf{TON Bridge (USDT)}
+\textbf{TON = Payment Rail}
 \begin{itemize}
+    \item \textcolor{gray}{Только депозиты/выводы, нет батчей}
     \item Депозит: $\sim$3 сек (USDT transfer)
     \item Вывод: $\sim$1 сек (immediate)
-    \item No challenge window
     \item Telegram Mini App auth
     \item Пользователи tg-* bypass RSA
 \end{itemize}
