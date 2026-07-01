@@ -81,7 +81,19 @@ For production Telegram Mini App: create bot via @BotFather → set Menu Button 
 
 ## Architecture
 
-Full design doc in [`ARCHITECTURE.md`](ARCHITECTURE.md) — three-layer vision (L1 Arbitrum → L2 PBFT → L3 Execution).  
+Full design doc in [`ARCHITECTURE.md`](ARCHITECTURE.md) — three-layer vision.  
+**Layer naming (our system, not Ethereum global):**
+
+| Layer | Name | Responsibility |
+|---|---|---|
+| **L1** | Ethereum | Base settlement layer. Ultimate source of truth for Arbitrum (L2). |
+| **L2** | Arbitrum / TON | Networks holding USDC (Arbitrum) / USDT (TON). Our bridge targets for deposits/withdrawals. |
+| **L3** | Our SMR (PBFT + Execution) | Deterministic matching, margin, liquidation, state machine replicated across 3 validators. |
+
+> **Note:** We are NOT an Ethereum L3 (rollup-on-rollup). We build our own PBFT-based state machine (L3) that uses Arbitrum/TON as settlement layers (L2). Hyperliquid uses similar model but calls their consensus layer L1.
+
+> **Package naming vs layer naming:** Java packages `l1/` (legacy PoS code, not used in current architecture), `l2/` (our PBFT consensus — part of L3 layer!), and `l3/` (FlatFileStore — also part of L3 layer) predate this naming convention and do NOT align with it.
+
 Current state below.
 
 Single Maven module. Packages under `src/main/java/com/example/dex/`:
@@ -94,8 +106,8 @@ Single Maven module. Packages under `src/main/java/com/example/dex/`:
 | `margin/` | MarginManager, LiquidationEngine, FundingCalculator |
 | `models/` | Order, Trade, ChainTransaction, RollupBatch, Position, etc. |
 | `bridge/` | **ArbitrumBridge** (retryable tickets, 7d challenge window) + **TonBridge** (instant, no window) + ArbitrumBridgePoller, TonBridgePoller, WithdrawalFinalizer, TonWithdrawalFinalizer |
-| `l1/` | L1 ledger state, PoS consensus, block/transaction models |
-| `l2/` | PBFT consensus, Mempool, L2Block, LeaderElector, ValidatorNetwork (HTTP) |
+| `l1/` | Legacy — L1ConsensusPoS, LedgerState, L1Block (not used in current L1/L2/L3 naming) |
+| `l2/` | PBFT consensus (PbftConsensus, LeaderElector), Mempool, L2Block, ValidatorNetwork |
 | `l3/persistence/` | FlatFileStore — WAL (JSON Lines) + periodic snapshots, recovery on restart |
 | `client/` | DexClient SDK with validator failover |
 | `oracle/` | Price oracle service |
@@ -128,7 +140,7 @@ ChainTransaction carries `isFastWithdraw` (boolean) and `fastFeeBps` (int, 0-100
 
 ```
 User sends USDT (TON) to vault → TonBridge.depositUsdt()
-  → 3s confirmation → outbox → TonBridgePoller → Mempool → PBFT → L2 credited
+  → 3s confirmation → outbox → TonBridgePoller → Mempool → PBFT → L3 credited
 
 User withdraws → POST /api/ton/withdraw {signature}
   → WITHDRAW_SIGNED → PBFT → TonWithdrawalFinalizer
@@ -171,7 +183,7 @@ Client → POST /api/order → ValidatorNode (any peer)
 
 ## Test quirks
 
-- **`ThroughputBenchmarkTest`** is heavy (~250k transactions + JVM warmup). Expect it to take 30-60+ seconds. It measures TPS for L2 vs SMR paths and includes crypto/rollup hashing benchmarks.
+- **`ThroughputBenchmarkTest`** is heavy (~250k transactions + JVM warmup). Expect it to take 30-60+ seconds. It measures TPS for L2 (consensus-only) vs SMR (full execution) paths and includes crypto/rollup hashing benchmarks. Note: test's "L2" naming predates current layer naming — it refers to our PBFT layer, not Arbitrum/TON.
 - `ValidatorNetworkTest` uses ephemeral ports (90xx) for inter-validator HTTP.
 - `ArbitrumBridgeTest` uses configurable timing parameters — 3 tests cover deposit, withdrawal, and challenge flow.
 - `ArbitrumBridgePollerTest` tests poller outbox reading + dedup — 3 tests.
