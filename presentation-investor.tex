@@ -85,37 +85,43 @@ Perpetual DEX: \$2.3B+ ежедневного объёма (2026). HyperLiquid �
 \begin{frame}{Архитектура}
 
 \centering
-\begin{tikzpicture}[node distance=0.8em, auto]
-\tikzstyle{box}=[rectangle, rounded corners, minimum width=28em, minimum height=1.8em, draw, font=\bfseries]
-\tikzstyle{sub}=[rectangle, minimum width=0pt, minimum height=0pt, draw=none, font=\small]
+\setlength{\tabcolsep}{6pt}
 
-\node[box, fill=blue!20] (l1) {L1: Ethereum (базовый слой расчётов)};
-\node[box, fill=blue!15, below=of l1] (l2) {L2: Arbitrum (USDC) \quad | \quad TON (USDT)};
-\node[box, fill=blue!25, below=of l2] (l3) {L3: Наш SMR --- PBFT + Disruptor + Matching};
+\begin{tabular}{ccc}
+\hline
+\multicolumn{3}{c}{\textbf{L1: Ethereum}} \\
+\multicolumn{3}{c}{\scriptsize базовый слой расчётов} \\
+\\[-0.5em]
+\multicolumn{3}{c}{$\downarrow$} \\
+\\[-0.5em]
+\hline
+\textbf{L2: Arbitrum (USDC)} & \quad$\mid$\quad & \textbf{L2: TON (USDT)} \\
+\scriptsize депозиты/выводы, rollup batches & & \scriptsize Telegram Mini App, instant \\
+\\[-0.5em]
+\multicolumn{3}{c}{$\downarrow$} \\
+\\[-0.5em]
+\hline
+\multicolumn{3}{c}{\textbf{L3: Наш SMR}} \\
+\multicolumn{3}{c}{\scriptsize PBFT (3 валидатора, 2/3) $\to$ Disruptor $\to$ StateExecutionHandler} \\
+\multicolumn{3}{c}{\scriptsize OrderBook $\cdot$ MarginManager $\cdot$ Liquidation $\cdot$ FlatFileStore} \\
+\hline
+\end{tabular}
 
-\node[sub, below=1.8em of l3, text width=10em, align=center] (a) {\small\textbf{3 валидатора}\\[0.2em]\footnotesize PBFT, 2/3 голосов};
-\node[sub, right=4em of a, text width=10em, align=center] (b) {\small\textbf{1s block time}\\[0.2em]\footnotesize PrePrepare → Prepare → Commit};
-\node[sub, below=1.2em of a, text width=10em, align=center] (c) {\small\textbf{OrderBook \& Margin}\\[0.2em]\footnotesize Price-time priority, cross+isolated};
-\node[sub, right=4em of c, text width=10em, align=center] (d) {\small\textbf{FlatFileStore}\\[0.2em]\footnotesize WAL + snapshots + recovery};
+\vspace{0.8em}
 
-\draw[->, thick] (l1) -- (l2);
-\draw[->, thick] (l2) -- (l3);
-\end{tikzpicture}
-
-\vspace{0.3em}
 \begin{columns}[t]
 \begin{column}{0.48\textwidth}
 \textbf{Deposit flow}\\
-User $\to$ L2 bridge $\to$ PBFT $\to$ L3 credit
+\small User $\to$ L2 bridge $\to$ PBFT $\to$ L3 credit
 \end{column}
 \begin{column}{0.48\textwidth}
 \textbf{Withdrawal flow}\\
-User $\to$ WITHDRAW\_SIGNED $\to$ PBFT $\to$ L2 send $\to$ L1 finality
+\small User $\to$ PBFT $\to$ L2 send $\to$ L1 finality
 \end{column}
 \end{columns}
 
 \vspace{0.3em}
-\centering\footnotesize\textcolor{gray}{\hspace*{2em}Java пакеты: l1/ (legacy), l2/ (PBFT), l3/ (persistence) --- не совпадают со слоями}
+\centering\footnotesize\textcolor{gray}{Java пакеты l1/, l2/, l3/ --- legacy naming, не совпадают со слоями}
 \end{frame}
 
 \begin{frame}{Сравнение с HyperLiquid}
