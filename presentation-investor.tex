@@ -1,0 +1,350 @@
+\documentclass[aspectratio=169]{beamer}
+\usetheme[numbering=fraction, progressbar=frametitle, block=fill]{metropolis}
+\usepackage[T2A]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage[russian]{babel}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{tikz}
+\usepackage{xcolor}
+
+\definecolor{accent}{RGB}{52, 136, 255}
+\definecolor{green}{RGB}{102, 221, 136}
+\definecolor{orange}{RGB}{255, 204, 68}
+\definecolor{red}{RGB}{255, 102, 102}
+\definecolor{gray}{RGB}{136, 136, 136}
+
+\setbeamercolor{frametitle}{bg=accent!20, fg=accent}
+\setbeamercolor{block title}{bg=accent!20, fg=accent}
+
+\title{Antigravity DEX}
+\subtitle{Децентрализованная биржа деривативов}
+\date{2026}
+
+\begin{document}
+
+\begin{frame}
+\maketitle
+\centering{\small PBFT \quad Arbitrum / TON \quad Telegram Mini App}
+\end{frame}
+
+\begin{frame}{Проблема}
+
+\begin{columns}[t]
+\begin{column}{0.48\textwidth}
+\textbf{Централизованные биржи (CEX)}
+\begin{itemize}
+    \item Регулятор может заблокировать оператора
+    \item Single point of failure
+    \item Закрытый matching --- нельзя проверить честность
+    \item Требуют лицензий, KYC
+\end{itemize}
+\end{column}
+\begin{column}{0.48\textwidth}
+\textbf{HyperLiquid (эталон)}
+\begin{itemize}
+    \item Децентрализованный consensus (24 валидатора)
+    \item Но \textbf{единый API Gateway} --- 2 outages в 2025
+    \item \$360k/мес на инфраструктуру
+    \item Закрытый код
+\end{itemize}
+\end{column}
+\end{columns}
+
+\vspace{0.8em}
+\begin{block}{Рынок}
+Perpetual DEX: \$2.3B+ ежедневного объёма (2026). HyperLiquid доминирует ($\sim$70\% market share). Единственный конкурент с децентрализованным matching.
+\end{block}
+\end{frame}
+
+\begin{frame}{Решение}
+
+\begin{columns}[t]
+\begin{column}{0.48\textwidth}
+\textbf{Децентрализация без компромиссов}
+\begin{itemize}
+    \item 3 валидатора, PBFT (2/3 голосов)
+    \item Каждый валидатор = свой REST API
+    \item Клиент сам выбирает, к кому подключаться
+    \item При падении одного --- failover к другому
+    \item Никакого API Gateway --- никакого SPOF
+\end{itemize}
+\end{column}
+\begin{column}{0.48\textwidth}
+\textbf{Ключевые преимущества}
+\begin{itemize}
+    \item[\textcolor{green}{\checkmark}] \textbf{Безопасность:} 2/3 подписей для вывода средств
+    \item[\textcolor{green}{\checkmark}] \textbf{Open-source:} код публичный, любой может запустить ноду
+    \item[\textcolor{green}{\checkmark}] \textbf{Экономия:} \$600/мес vs \$360k/мес (HyperLiquid)
+    \item[\textcolor{green}{\checkmark}] \textbf{Регуляторная устойчивость:} \dq мы --- протокол, не биржа\dq
+\end{itemize}
+\end{column}
+\end{columns}
+\end{frame}
+
+\begin{frame}{Архитектура}
+
+\centering
+\begin{tikzpicture}[node distance=1.2em, auto]
+\tikzstyle{box}=[rectangle, rounded corners, minimum width=28em, minimum height=2.2em, draw, font=\bfseries]
+\tikzstyle{sub}=[rectangle, rounded corners, minimum width=8em, minimum height=1.6em, draw=none, font=\small]
+
+\node[box, fill=blue!20] (l1) {L1: Ethereum (базовый слой расчётов)};
+\node[box, fill=blue!15, below=of l1] (l2) {L2: Arbitrum (USDC) \quad | \quad TON (USDT)};
+\node[box, fill=blue!25, below=of l2] (l3) {L3: Наш SMR --- PBFT + Disruptor + Matching};
+
+\node[sub, below=1.2em of l3] (a) {3 валидатора};
+\node[sub, right=of a] (b) {1s block time};
+\node[sub, below=of a] (c) {OrderBook \quad Margin \quad Liquidation};
+\node[sub, right=of c] (d) {FlatFile persistence};
+
+\draw[->, thick] (l1) -- (l2);
+\draw[->, thick] (l2) -- (l3);
+\end{tikzpicture}
+
+\vspace{0.5em}
+\begin{columns}[t]
+\begin{column}{0.48\textwidth}
+\textbf{Deposit flow}\\
+User $\to$ L2 bridge $\to$ PBFT $\to$ L3 credit
+\end{column}
+\begin{column}{0.48\textwidth}
+\textbf{Withdrawal flow}\\
+User $\to$ WITHDRAW\_SIGNED $\to$ PBFT $\to$ L2 send $\to$ L1 finality
+\end{column}
+\end{columns}
+\end{frame}
+
+\begin{frame}{Сравнение с HyperLiquid}
+
+\centering
+\begin{tabular}{lcc}
+\toprule
+\textbf{Параметр} & \textbf{HyperLiquid} & \textbf{Antigravity DEX} \\
+\midrule
+Валидаторы & 24 & \textbf{3} \\
+Консенсус & HyperBFT & \textbf{PBFT} \\
+API Gateway & \textcolor{red}{CloudFront} & \textbf{Нет} \\
+TPS & 200k/s & \textbf{$\sim$5M (один валидатор)} \\
+Settlement & Свой L1 & \textbf{Arbitrum / TON} \\
+Язык & Rust & \textbf{Java 25} \\
+Smart contracts & HyperEVM & \textbf{Нет (план)} \\
+Native token & HYPE (\$10B) & \textbf{Опционально} \\
+Инфраструктура & \textcolor{red}{\textbf{\$360k/мес}} & \textbf{\$600/мес} \\
+Код & \textcolor{red}{Закрытый} & \textbf{Open-source} \\
+\midrule
+\textbf{Регуляторный риск} & \textcolor{orange}{Средний} & \textbf{Низкий} \\
+\textbf{Единая точка отказа} & \textcolor{red}{Есть} & \textbf{Нет} \\
+\bottomrule
+\end{tabular}
+\end{frame}
+
+\begin{frame}{Производительность}
+
+\begin{columns}[t]
+\begin{column}{0.48\textwidth}
+\textbf{Что измерено}
+\vspace{0.3em}
+\begin{itemize}
+    \item[\textcolor{green}{\checkmark}] \textbf{Execution:} $\sim$5M tx/s
+    \item In-memory Disruptor, без I/O
+    \item ThroughputBenchmarkTest (JVM warmup)
+\end{itemize}
+\end{column}
+\begin{column}{0.48\textwidth}
+\textbf{Что предстоит измерить}
+\vspace{0.3em}
+\begin{itemize}
+    \item[\textcolor{orange}{?}] \textbf{Consensus (3 ноды):} TBD
+    \item[\textcolor{orange}{?}] \textbf{End-to-end:} TBD
+    \item[\textcolor{orange}{?}] \textbf{Latency:} оценка 50--200ms
+\end{itemize}
+\end{column}
+\end{columns}
+
+\vspace{0.8em}
+\textbf{Вывод:} узкое место --- не execution, а сетевая задержка PBFT.\\
+Block interval (1s) даёт $\sim$5k tx/s при 5000 tx/block. Для retail этого достаточно с запасом.
+\end{frame}
+
+\begin{frame}{Мосты: Arbitrum + TON}
+
+\begin{columns}[t]
+\begin{column}{0.48\textwidth}
+\textbf{Arbitrum Bridge}
+\begin{itemize}
+    \item \textbf{Актив:} USDC
+    \item \textbf{Депозит:} 10--15 мин
+    \item \textbf{Вывод:} 7 дней / fast 0.3\%
+    \item \textbf{Безопасность:} Ethereum finality
+    \item \textbf{Challenge window:} 7 дней
+\end{itemize}
+\end{column}
+\begin{column}{0.48\textwidth}
+\textbf{TON Bridge}
+\begin{itemize}
+    \item \textbf{Актив:} USDT
+    \item \textbf{Депозит:} $\sim$3 сек
+    \item \textbf{Вывод:} $\sim$1 сек (мгновенно)
+    \item \textbf{Интеграция:} Telegram Mini App
+    \item \textbf{Auth:} WebApp SDK initData
+\end{itemize}
+\end{column}
+\end{columns}
+
+\vspace{0.5em}
+\begin{block}{\textcolor{orange}{Статус}}
+Оба моста реализованы как in-memory mock. Реальная интеграция с Arbitrum Nitro и TON RPC --- первый приоритет для продакшна.
+\end{block}
+\end{frame}
+
+\begin{frame}{Telegram Mini App}
+
+\textbf{Почему Telegram?}
+
+\begin{itemize}
+    \item 900M+ активных пользователей
+    \item Встроенный кошелёк (Telegram Wallet --- TON USDT)
+    \item WebApp SDK --- авторизация без паролей
+    \item Мгновенные депозиты/выводы через TON
+\end{itemize}
+
+\textbf{Что сделано:}
+\begin{itemize}
+    \item UI: telegram.html + telegram-app.js (vanilla JS)
+    \item Auth: Telegram WebApp initData (HMAC)
+    \item Депозит USDT $\to$ торговля $\to$ вывод USDT
+    \item Пользователи tg-* пропускают RSA-верификацию
+\end{itemize}
+
+\textbf{План:}
+\begin{itemize}
+    \item TON Connect / Tonkeeper интеграция
+    \item Push-уведомления о сделках
+    \item In-app графики
+\end{itemize}
+\end{frame}
+
+\begin{frame}{Бизнес-модель}
+
+\begin{columns}[t]
+\begin{column}{0.48\textwidth}
+\textbf{Доходы}
+\begin{itemize}
+    \item Protocol fee: 0.02--0.05\% с каждой сделки
+    \item Fast withdrawal fee: 0.3\% (LP)
+    \item Funding rate: переменная
+    \item Возможен native token:
+    \begin{itemize}
+        \item Стейкинг $\to$ fee discount
+        \item DAO governance
+        \item Insurance fund
+    \end{itemize}
+\end{itemize}
+\end{column}
+\begin{column}{0.48\textwidth}
+\textbf{Расходы}
+\begin{itemize}
+    \item 3 $\times$ bare metal: $\sim$\$150/мес
+    \item Arbitrum batches: $\sim$\$17--50/мес
+    \item TON RPC: $\sim$\$0 (public)
+    \item Домены, SSL: $\sim$\$0
+\end{itemize}
+\end{column}
+\end{columns}
+
+\vspace{0.8em}
+\begin{block}{Breakeven}
+\textbf{При fee 0.03\%:} breakeven при объёме $\sim$\$100k/день.\\
+\textbf{При fee 0.05\%:} breakeven при $\sim$\$60k/день.\\
+\textbf{Сравнение:} HyperLiquid обрабатывает \$2-5B/день.
+\end{block}
+\end{frame}
+
+\begin{frame}{Регуляторная стратегия}
+
+\begin{enumerate}
+    \item Incorporation: Cayman Islands / BVI
+    \item Компания владеет IP, \textbf{но не управляет биржей}
+    \item Сеть валидаторов --- открытая, код open-source
+    \item Геоблокировка US + sanctioned countries (Cloudflare IP)
+    \item \textbf{Без KYC} --- кошелёк = адрес, торговля без идентификации
+    \item Ключевой аргумент: \dq мы --- протокол (L2 settlement layer), не биржа. Код открыт, валидаторы независимы\dq
+\end{enumerate}
+
+\vspace{0.5em}
+\begin{block}{Пример}
+HyperLiquid прошёл этот путь:\\
+Cayman foundation + open-source + независимые валидаторы = SEC не может заблокировать протокол.
+\end{block}
+
+\centering{\small \textcolor{orange}{Не является юридической консультацией. Требуется advice от crypto-юриста.}}
+\end{frame}
+
+\begin{frame}{Roadmap}
+
+\begin{columns}[t]
+\begin{column}{0.48\textwidth}
+\textcolor{green}{\textbf{Сделано}}
+\begin{itemize}
+    \item PBFT consensus (3 валидатора, 2/3)
+    \item LMAX Disruptor pipeline
+    \item OrderBook + MarginManager
+    \item Liquidation + Funding
+    \item ArbitrumBridge + TonBridge (mock)
+    \item FlatFileStore (WAL + snapshot)
+    \item Telegram Mini App
+    \item 36 тестов, все проходят
+\end{itemize}
+\end{column}
+\begin{column}{0.48\textwidth}
+\textcolor{orange}{\textbf{Следующие шаги}}
+\begin{enumerate}
+    \item \textbf{Currency model:} oracle-weighted equity
+    \item \textbf{Real bridges:} Arbitrum Nitro + TON RPC
+    \item \textbf{TON Vault:} multisig / smart contract
+    \item \textbf{Validator economics:} stake, slashing, fees
+    \item Network benchmark (3 региона)
+    \item Security audit
+\end{enumerate}
+\vspace{0.5em}
+\textbf{Детали:} github.com/rgobov/dex-on-java/UNRESOLVED.md
+\end{column}
+\end{columns}
+\end{frame}
+
+\begin{frame}{Что нужно сейчас}
+
+\begin{columns}[t]
+\begin{column}{0.33\textwidth}
+\centering
+\textbf{1. Security audit}\\[0.3em]
+\small
+PBFT consensus, bridges, margin logic, cryptography.\\
+Базово --- до реальных денег.
+\end{column}
+\begin{column}{0.33\textwidth}
+\centering
+\textbf{2. Real bridge integration}\\[0.3em]
+\small
+Arbitrum Nitro (RPC + retryable tickets) + TON RPC.\\
+Замена mock на реальные вызовы.
+\end{column}
+\begin{column}{0.33\textwidth}
+\centering
+\textbf{3. Validator economics}\\[0.3em]
+\small
+Stake model, slashing conditions, fee distribution.\\
+Как привлечь независимых валидаторов.
+\end{column}
+\end{columns}
+
+\vspace{1em}
+\centering
+\large\textbf{Готовы к диалогу с инвесторами и техническими партнёрами.}
+
+\vspace{0.5em}
+\small\textcolor{gray}{github.com/rgobov/dex-on-java}
+\end{frame}
+
+\end{document}

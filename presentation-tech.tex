@@ -1,0 +1,348 @@
+\documentclass[aspectratio=169]{beamer}
+\usetheme[numbering=fraction, progressbar=frametitle, block=fill]{metropolis}
+\usepackage[T2A]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage[russian]{babel}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{listings}
+\usepackage{tikz}
+\usepackage{xcolor}
+
+\definecolor{accent}{RGB}{52, 136, 255}
+\definecolor{green}{RGB}{102, 221, 136}
+\definecolor{orange}{RGB}{255, 204, 68}
+\definecolor{graybg}{RGB}{30, 30, 50}
+\definecolor{red}{RGB}{255, 102, 102}
+
+\setbeamercolor{frametitle}{bg=accent!20, fg=accent}
+\setbeamercolor{block title}{bg=accent!20, fg=accent}
+\lstset{basicstyle=\ttfamily\footnotesize, backgroundcolor=\color{graybg!10}, breaklines=true}
+
+\title{Antigravity DEX}
+\subtitle{Децентрализованная биржа деривативов --- техническая архитектура}
+\date{2026}
+
+\begin{document}
+
+\begin{frame}
+\maketitle
+\centering{\small PBFT консенсус  \quad LMAX Disruptor \quad Arbitrum + TON бриджи}
+\end{frame}
+
+\begin{frame}{Проблема}
+\begin{itemize}
+    \item \textbf{Centralized risk:} регулятор может заблокировать любого CEX оператора
+    \item \textbf{Single point of failure:} у HyperLiquid единый CloudFront Gateway ---~2 даунтайма в 2025
+    \item \textbf{Закрытый код:} нельзя проверить честность matching-а
+    \item \textbf{Стоимость:} ~\$360k/мес на инфраструктуру HyperLiquid
+\end{itemize}
+\end{frame}
+
+\begin{frame}{Решение: децентрализация без единой точки отказа}
+
+\begin{columns}[t]
+\begin{column}{0.48\textwidth}
+\textbf{Архитектура}
+\begin{itemize}
+    \item 3 валидатора, PBFT (2/3 голосов)
+    \item Каждый валидатор = свой REST API
+    \item Клиент выбирает любой, failover при падении
+    \item Open-source код
+\end{itemize}
+\end{column}
+\begin{column}{0.48\textwidth}
+\textbf{Преимущества}
+\begin{itemize}
+    \item Нет единой точки отказа
+    \item \$600/мес vs \$360k/мес (HyperLiquid)
+    \item Устойчивость к регуляторам
+    \item(\dq протокол, не биржа\dq)
+\end{itemize}
+\end{column}
+\end{columns}
+\end{frame}
+
+\begin{frame}{Трёхслойная архитектура}
+
+\centering
+\begin{tikzpicture}[node distance=1.5em, auto]
+\tikzstyle{layer}=[rectangle, rounded corners, minimum width=22em, minimum height=2.2em, font=\bfseries]
+\tikzstyle{comp}=[rectangle, rounded corners, draw, minimum width=8em, minimum height=1.8em, font=\small]
+
+\node[layer, fill=blue!30] (l1) {L1: Ethereum --- Base settlement};
+\node[layer, fill=blue!20, below=of l1] (l2) {L2: Arbitrum (USDC) / TON (USDT)};
+\node[layer, fill=blue!40, below=of l2] (l3) {L3: Our SMR (3 валидатора)};
+
+\node[comp, below=1.5em of l3] (pbft) {PBFT Consensus};
+\node[comp, right=of pbft] (disr) {Disruptor};
+\node[comp, right=of disr] (exe) {Execution};
+\node[comp, below=of pbft] (wal) {FlatFileStore};
+
+\draw[->, thick] (l1) -- (l2);
+\draw[->, thick] (l2) -- (l3);
+\draw[->] (pbft) -- (disr);
+\draw[->] (disr) -- (exe);
+\draw[->] (exe) -- (wal);
+
+\node[font=\tiny, below=0.2em of wal] (note) {Java пакеты l1/ (legacy), l2/ (PBFT), l3/ (persistence) --- не совпадают со слоями};
+\end{tikzpicture}
+\end{frame}
+
+\begin{frame}{PBFT Consensus}
+
+\begin{columns}[t]
+\begin{column}{0.55\textwidth}
+\textbf{Раунд консенсуса (1s tick)}
+\begin{enumerate}
+    \item Leader забирает tx из mempool
+    \item PrePrepare ---~рассылает блок
+    \item Prepare ---~2/3 валидаторов подтверждают
+    \item Commit ---~2/3 финализируют
+    \item Блок исполняется локально каждым валидатором
+\end{enumerate}
+\end{column}
+\begin{column}{0.4\textwidth}
+\textbf{Характеристики}
+\begin{itemize}
+    \item Stake-weighted round-robin leader
+    \item 1 Byzantine fault (при 3 валидаторах)
+    \item Детерминированное исполнение
+    \item gRPC (planned) / HTTP (current)
+\end{itemize}
+\end{column}
+\end{columns}
+\end{frame}
+
+\begin{frame}{Disruptor Pipeline}
+
+\begin{columns}[t]
+\begin{column}{0.48\textwidth}
+\textbf{Единственный путь исполнения}
+\vspace{0.3em}
+\nopagebreak
+\begin{itemize}
+    \item LMAX Disruptor RingBuffer
+    \item Single-thread consumer
+    \item No I/O на горячем пути
+    \item StateExecutionHandler.onEvent()
+    \item Типы: DEPOSIT, WITHDRAW,\newline PLACE\_ORDER, CANCEL\_ORDER,\newline UPDATE\_ORACLE
+\end{itemize}
+\end{column}
+\begin{column}{0.48\textwidth}
+\textbf{Производительность}
+\vspace{0.3em}
+\nopagebreak
+\begin{itemize}
+    \item[\textcolor{green}{\checkmark}] \textbf{Execution:} $\sim$5M tx/s (один валидатор, in-memory)
+    \item[\textcolor{orange}{?}] \textbf{Consensus (3 ноды):} TBD --- нужен network benchmark
+    \item[\textcolor{orange}{?}] \textbf{End-to-end:} TBD --- оценка 50--200ms
+\end{itemize}
+\vspace{1em}
+\hfill{\small\color{gray} Benchmark: ThroughputBenchmarkTest}
+\end{column}
+\end{columns}
+\end{frame}
+
+\begin{frame}{OrderBook + Margin + Liquidation}
+
+\begin{columns}[t]
+\begin{column}{0.48\textwidth}
+\textbf{OrderBook}
+\begin{itemize}
+    \item Price-time priority
+    \item Limit / Market orders
+    \item Partial fill support
+\end{itemize}
+\textbf{MarginManager}
+\begin{itemize}
+    \item Cross + Isolated margin
+    \item Oracle-weighted equity (WIP)
+    \item Fast withdrawal (0.3\% fee)
+\end{itemize}
+\end{column}
+\begin{column}{0.48\textwidth}
+\textbf{LiquidationEngine}
+\begin{itemize}
+    \item Isolated: ликвидация по цене
+    \item Cross: принудительное закрытие
+    \item FundingCalculator: premium index
+\end{itemize}
+\textbf{Стейты}
+\begin{itemize}
+    \item Все в памяти (Disruptor)
+    \item FlatFileStore: WAL (JSON Lines) + snapshot каждые 30s
+    \item Recovery: snapshot $\to$ replay WAL
+\end{itemize}
+\end{column}
+\end{columns}
+\end{frame}
+
+\begin{frame}{Мосты: Arbitrum + TON}
+
+\begin{columns}[t]
+\begin{column}{0.48\textwidth}
+\textbf{Arbitrum Bridge (USDC)}
+\begin{itemize}
+    \item Депозит: retryable ticket (10--15 мин)
+    \item Вывод: 7 дней (standard) / fast 0.3\%
+    \item Challenge window: 7 дней
+    \item Rollup batch posting (state root)
+\end{itemize}
+\end{column}
+\begin{column}{0.48\textwidth}
+\textbf{TON Bridge (USDT)}
+\begin{itemize}
+    \item Депозит: $\sim$3 сек (USDT transfer)
+    \item Вывод: $\sim$1 сек (immediate)
+    \item No challenge window
+    \item Telegram Mini App auth
+    \item Пользователи tg-* bypass RSA
+\end{itemize}
+\end{column}
+\end{columns}
+\vspace{0.5em}
+\begin{block}{\textcolor{orange}{Внимание}}
+Оба моста --- in-memory mock. Реальная интеграция с Arbitrum Nitro и TON RPC --- следующий шаг.
+\end{block}
+\end{frame}
+
+\begin{frame}{Persistence: FlatFileStore}
+
+\begin{columns}[t]
+\begin{column}{0.48\textwidth}
+\textbf{Структура}
+\begin{itemize}
+    \item WAL: JSON Lines (все ChainTransaction)
+    \item Snapshot: полный срез стейта (JSON)
+    \item Период: 30s или 10 блоков
+    \item Путь: data-\{nodeId\}/l3/
+\end{itemize}
+\end{column}
+\begin{column}{0.48\textwidth}
+\textbf{Snapshots содержат}
+\begin{itemize}
+    \item Balance (free + locked margin)
+    \item Open orders
+    \item Positions
+    \item processedBridgeTicketIds
+    \item pendingWithdrawals (isFastWithdraw, feeBps, beneficiary)
+\end{itemize}
+\end{column}
+\end{columns}
+\end{frame}
+
+\begin{frame}{Telegram Mini App}
+
+\begin{columns}[t]
+\begin{column}{0.48\textwidth}
+\textbf{Функционал}
+\begin{itemize}
+    \item Компактный UI внутри Telegram
+    \item WebApp SDK auth (HMAC initData)
+    \item Депозит USDT (TON)
+    \item Размещение ордеров
+    \item Вывод USDT (TON)
+    \item Graceful fallback вне Telegram
+\end{itemize}
+\end{column}
+\begin{column}{0.48\textwidth}
+\textbf{Файлы}
+\begin{itemize}
+    \item ui/telegram.html
+    \item ui/telegram-app.js
+    \item ui/style.css
+    \item ui/index.html (полный dashboard)
+\end{itemize}
+\textbf{Флоу}
+\begin{enumerate}
+    \item User отправляет USDT в vault
+    \item TonBridgePoller $\to$ Mempool $\to$ PBFT
+    \item StateExecutionHandler.credit()
+    \item Trade $\to$ Withdraw $\to$ TonBridge.sendToWallet()
+\end{enumerate}
+\end{column}
+\end{columns}
+\end{frame}
+
+\begin{frame}{Статус проекта}
+
+\begin{columns}[t]
+\begin{column}{0.48\textwidth}
+\textcolor{green}{\textbf{Сделано}}
+\begin{itemize}
+    \item PBFT consensus (3 валидатора, 2/3)
+    \item Disruptor pipeline
+    \item OrderBook (price-time)
+    \item MarginManager (cross + isolated)
+    \item Liquidation + Funding
+    \item ArbitrumBridge mock
+    \item TonBridge mock
+    \item FlatFileStore (WAL + snapshot)
+    \item Telegram Mini App
+    \item 36 тестов (17--20s)
+\end{itemize}
+\end{column}
+\begin{column}{0.48\textwidth}
+\textcolor{orange}{\textbf{Открытые вопросы (UNRESOLVED.md)}}
+\begin{enumerate}
+    \item Currency model (single USD / two-pool / oracle-weighted)
+    \item Real Arbitrum Nitro + TON RPC
+    \item TON Vault custody (multisig / contract)
+    \item Validator stake \& slashing
+    \item Cross-token withdrawal policy
+\end{enumerate}
+\vspace{1em}
+\textcolor{orange}{\textbf{Что нужно сейчас}}
+\begin{itemize}
+    \item Security audit
+    \item Real bridge integration
+    \item Validator economics design
+\end{itemize}
+\end{column}
+\end{columns}
+\end{frame}
+
+\begin{frame}{Код}
+
+\textbf{Пакеты} src/main/java/com/example/dex/
+
+\centering
+\begin{tabular}{ll}
+\toprule
+\textbf{Пакет} & \textbf{Назначение} \\
+\midrule
+server/ & ValidatorNode (PBFT entry point) \\
+disruptor/ & LMAX Disruptor pipeline \\
+matching/ & OrderBook (price-time) \\
+margin/ & Margin, Liquidation, Funding \\
+bridge/ & Arbitrum + TON bridges \\
+l2/ & PBFT consensus, Mempool, Network \\
+l3/persistence/ & FlatFileStore \\
+models/ & Order, Trade, ChainTransaction \\
+client/ & DexClient SDK \\
+cryptography/ & RSA signing \\
+\bottomrule
+\end{tabular}
+
+\vspace{0.5em}
+\centering{\small \textcolor{gray}{Всего: 36 тестов, все проходят. \quad Java 25. \quad Maven single module.}}
+\end{frame}
+
+\begin{frame}{Как начать}
+
+\begin{enumerate}
+    \item \texttt{git clone https://github.com/rgobov/dex-on-java}
+    \item \texttt{mvn compile}
+    \item \texttt{mvn test} \quad (36 тестов, $\sim$20s)
+    \item Три ноды:
+    \begin{itemize}
+        \item \texttt{PEERS=val-1:8001,val-2:8002,val-3:8003 mvn exec:java -Dexec.args="val-1 8001 data-val1"}
+        \item \texttt{PEERS=... mvn exec:java -Dexec.args="val-2 8002 data-val2"}
+        \item \texttt{PEERS=... mvn exec:java -Dexec.args="val-3 8003 data-val3"}
+    \end{itemize}
+    \item Telegram Mini App: \texttt{http://localhost:8001/telegram.html}
+\end{enumerate}
+\end{frame}
+
+\end{document}

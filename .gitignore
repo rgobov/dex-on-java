@@ -7,3 +7,7 @@ target/
 .classpath
 .DS_Store
 *.log
+
+# LaTeX build artifacts
+*.zip
+*.pdf
