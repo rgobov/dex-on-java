@@ -28,32 +28,34 @@
 \centering{\small PBFT \quad Arbitrum / TON \quad Telegram Mini App}
 \end{frame}
 
-\begin{frame}{Проблема}
+\begin{frame}{Проблема: CEX vs DEX}
 
 \begin{columns}[t]
 \begin{column}{0.48\textwidth}
-\textbf{Централизованные биржи (CEX)}
+\textbf{CEX (Binance, Bybit)}
 \begin{itemize}
-    \item Регулятор может заблокировать оператора
-    \item Single point of failure
-    \item Закрытый matching --- нельзя проверить честность
-    \item Требуют лицензий, KYC
+    \item Деньги на счету компании
+    \item Регулятор блокирует счета --- биржа закрыта
+    \item Один вход (API Gateway) --- SPOF
+    \item Требуют KYC, лицензий
 \end{itemize}
 \end{column}
 \begin{column}{0.48\textwidth}
-\textbf{HyperLiquid (эталон)}
+\textbf{DEX (наша модель)}
 \begin{itemize}
-    \item Децентрализованный consensus (24 валидатора)
-    \item Но \textbf{единый API Gateway} --- 2 outages в 2025
-    \item \$360k/мес на инфраструктуру
-    \item Закрытый код
+    \item Деньги в контрактах/\newline мультисиг-кошельках
+    \item Регулятору \textbf{некого блокировать}
+    \item Нет единого входа --- 3 независимых сервера
+    \item Без KYC --- кошелёк = идентификатор
 \end{itemize}
 \end{column}
 \end{columns}
 
-\vspace{0.8em}
-\begin{block}{Рынок}
-Perpetual DEX: \$2.3B+ ежедневного объёма (2026). HyperLiquid доминирует ($\sim$70\% market share). Единственный конкурент с децентрализованным matching.
+\vspace{0.5em}
+\begin{block}{HyperLiquid --- единственный серьёзный конкурент}
+24 валидатора, децентрализованный matching, но:
+\textcolor{red}{\textbf{единый CloudFront Gateway}} (2 даунтайма в 2025),
+\textcolor{red}{\textbf{\$360k/мес}} инфраструктуры, \textcolor{red}{\textbf{закрытый код}}.
 \end{block}
 \end{frame}
 
@@ -237,17 +239,12 @@ Consensus throughput: TBD (зависит от объема блока и networ
 
 \begin{columns}[t]
 \begin{column}{0.48\textwidth}
-\textbf{Доходы}
+\textbf{Источники дохода}
 \begin{itemize}
-    \item Protocol fee: 0.02--0.05\% с каждой сделки
-    \item Fast withdrawal fee: 0.3\% (LP)
-    \item Funding rate: переменная
-    \item Возможен native token:
-    \begin{itemize}
-        \item Стейкинг $\to$ fee discount
-        \item DAO governance
-        \item Insurance fund
-    \end{itemize}
+    \item \textbf{Protocol fee:} 0.02--0.05\% с каждой сделки
+    \item Fast withdrawal fee: 0.3\% (LP + foundation)
+    \item Funding rate: спред забирает протокол
+    \item Native token (будущее): стейкинг, DAO, fee discount
 \end{itemize}
 \end{column}
 \begin{column}{0.48\textwidth}
@@ -257,33 +254,43 @@ Consensus throughput: TBD (зависит от объема блока и networ
     \item Arbitrum batches: $\sim$\$17--50/мес
     \item TON RPC: $\sim$\$0 (public)
     \item Домены, SSL: $\sim$\$0
+    \item \textbf{Итого: $\sim$ \$200/мес}
 \end{itemize}
 \end{column}
 \end{columns}
 
-\vspace{0.8em}
-\begin{block}{Breakeven}
-\textbf{При fee 0.03\%:} breakeven при объёме $\sim$\$100k/день.\\
-\textbf{При fee 0.05\%:} breakeven при $\sim$\$60k/день.\\
-\textbf{Сравнение:} HyperLiquid обрабатывает \$2-5B/день.
+\vspace{0.5em}
+\begin{block}{Считаем прибыль}
+\begin{tabular}{lr}
+\textbf{Дневной объём} & \textbf{Доход (0.03\% fee)} \\
+\hline
+\$100k & \$30/день или \textasciitilde\$900/мес \\
+\textbf{\$1M} & \textbf{\$300/день или \textasciitilde\$9k/мес} \\
+\$10M & \$3k/день или \textasciitilde\$90k/мес \\
+\hline
+\multicolumn{2}{l}{\small\textcolor{gray}{Для сравнения: HyperLiquid $\sim$\$2--5B/день}} \\
+\end{tabular}
 \end{block}
+
+\flushleft\small
+При объёме \$1M/день --- чистая прибыль \textbf{\$8.8k/мес} (после расходов).
 \end{frame}
 
 \begin{frame}{Регуляторная стратегия}
 
 \begin{enumerate}
-    \item Incorporation: Cayman Islands / BVI
-    \item Компания владеет IP, \textbf{но не управляет биржей}
-    \item Сеть валидаторов --- открытая, код open-source
-    \item Геоблокировка US + sanctioned countries (Cloudflare IP)
-    \item \textbf{Без KYC} --- кошелёк = адрес, торговля без идентификации
-    \item Ключевой аргумент: \dq мы --- протокол (L2 settlement layer), не биржа. Код открыт, валидаторы независимы\dq
+    \item \textbf{Cayman foundation} владеет IP и торговой маркой, \textbf{но не управляет биржей}
+    \item \textbf{Open-source} --- код публичный. Нельзя запретить протокол --- можно запретить конкретную компанию, но у нас её нет
+    \item \textbf{Без KYC} --- кошелёк = идентификатор. Мы физически не собираем персональные данные
+    \item \textbf{Геоблокировка US} (Cloudflare IP) --- на уровне UI, не на уровне протокола. Валидаторы в других юрисдикциях продолжают работать
+    \item \textbf{Прецедент HyperLiquid}: Cayman + open-source + без KYC, \$2--5B/день, SEC не может закрыть --- потому что закрывать некого
 \end{enumerate}
 
 \vspace{0.5em}
-\begin{block}{Пример}
-HyperLiquid прошёл этот путь:\\
-Cayman foundation + open-source + независимые валидаторы = SEC не может заблокировать протокол.
+\begin{block}{Ключевое сообщение}
+Мы не биржа в юридическом смысле. Мы --- протокол (набор правил и кода),
+через который пользователи торгуют друг с другом. Валидаторы --- не сотрудники,
+а независимые операторы. Как майнеры в Bitcoin.
 \end{block}
 
 \centering{\small \textcolor{orange}{Не является юридической консультацией. Требуется advice от crypto-юриста.}}
