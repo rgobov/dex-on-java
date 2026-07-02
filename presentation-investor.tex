@@ -303,29 +303,27 @@ Consensus throughput: TBD (зависит от объема блока и networ
 \textcolor{green}{\textbf{Сделано}}
 \begin{itemize}
     \item PBFT consensus (3 валидатора, 2/3)
-    \item LMAX Disruptor pipeline
-    \item OrderBook + MarginManager
-    \item Liquidation + Funding
+    \item Disruptor + OrderBook + Margin
     \item ArbitrumBridge + TonBridge (mock)
     \item FlatFileStore (WAL + snapshot)
     \item Telegram Mini App
-    \item 36 тестов, все проходят
+    \item 36 тестов
 \end{itemize}
 \end{column}
 \begin{column}{0.48\textwidth}
 \textcolor{orange}{\textbf{Следующие шаги}}
 \begin{enumerate}
-    \item \textbf{Currency model:} oracle-weighted equity
-    \item \textbf{Real bridges:} Arbitrum Nitro + TON RPC
-    \item \textbf{TON Vault:} multisig / smart contract
-    \item \textbf{Validator economics:} stake, slashing, fees
-    \item Network benchmark (3 региона)
-    \item Security audit
+    \item Currency model (oracle-weighted equity)
+    \item Real Arbitrum Nitro + TON RPC
+    \item TON Vault (multisig / contract)
+    \item Validator economics (stake, slashing)
+    \item Audit + Network benchmark
 \end{enumerate}
-\vspace{0.5em}
-\textbf{Детали:} github.com/rgobov/dex-on-java/UNRESOLVED.md
 \end{column}
 \end{columns}
+
+\vspace{0.3em}
+\centering\footnotesize\textcolor{gray}{Детали: github.com/rgobov/dex-on-java/UNRESOLVED.md}
 \end{frame}
 
 \begin{frame}{Что нужно сейчас}
