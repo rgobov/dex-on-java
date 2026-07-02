@@ -36,7 +36,7 @@
 \begin{itemize}
     \item Деньги на счету компании
     \item Регулятор блокирует счета --- биржа закрыта
-    \item Один вход (API Gateway) --- SPOF
+    \item Один вход (API Gateway) --- единая точка отказа
     \item Требуют KYC, лицензий
 \end{itemize}
 \end{column}
@@ -69,7 +69,7 @@
     \item Каждый валидатор = свой REST API
     \item Клиент сам выбирает, к кому подключаться
     \item При падении одного --- failover к другому
-    \item Никакого API Gateway --- никакого SPOF
+    \item Никакого API Gateway --- никакой единой точки отказа
 \end{itemize}
 \end{column}
 \begin{column}{0.48\textwidth}
